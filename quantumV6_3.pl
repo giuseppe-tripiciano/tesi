@@ -2,6 +2,7 @@
 %
 % QOP definitions
 :- op(120, yfx, qAND).
+:- op(150, yfx, qOR).
 :- op(150, xfy, [qXOR, qCZ, qCS]).
 :- op(100, fy, [qH, qNOT, qRNOT, qY, qZ, qS, qT]).
 %
@@ -65,32 +66,40 @@ reset_cbit_number :-
 % base case
 translate([q(N),q(N),[q(N)|_]], [q(N)]).
 %
-% 1-qbit gate case (clausola unaria)
-translate([Formula,q(N),Qbits], [Layer_gate, Right]) :-
-    Formula =.. [Op, RF], % scomposizione della formula unaria con associatività destra
-    last(Qbits,q(N)), % controllo lista qbits e qbit target
-    q_operator(Op), % verifica validità operatore
-    gate(Op,Gate,1), % recupero del gate a 1-qbit corrispondente all'operatore
-    Layer_gate =.. [Gate, q(N1)], % costruzione del termine associato a gate e qbit
-    translate([RF,q(N1),Qbits], Right). % chiamata ricorsiva per la sotto-formula destra
+% 1-qbit gate case
+translate([Formula,q(N),Qbits], [Layer_gate, Left]) :-
+    Formula =.. [Op, LF], % unary formula decomposition
+    last(Qbits,q(N)), % unify qbits list and target qbit
+    q_operator(Op), % verify operator validity
+    gate(Op,Gate,1), % get the 1-qbit gate corresponding to the operator
+    Layer_gate =.. [Gate, q(N1)], % gate and qbit term construction
+    translate([LF,q(N1),Qbits], Left). % sub-formula recursive call 
 %
 % Toffoli case
-translate([q(N1) qAND q(N2),q(N3),[q(N1), q(N2), q(N3)|_]], [tof(q(N1),q(N2),q(N3)), _]) :- !.                         
+translate([LF qAND RF,q(N3),[q(N1), q(N2), q(N3)|_]], [tof(q(N1),q(N2),q(N3)), Left, Right]) :- !,
+    translate([LF,q(N1),[q(N1)|_]], Left), % left sub-formula recursive call
+    translate([RF,q(N2),[q(N2)|_]], Right). % right sub-formula recursive call        
 %
-% 2-qbit gate case (clausola binaria)
-translate([Formula,q(N2),[q(N1),q(N2)|_]], [Layer_gate, Right]) :- 
-    Formula =.. [Op, q(N1), RF], % scomposizione della formula binaria con associatività destra
-    q_operator(Op), % verifica validità operatore
-    gate(Op,Gate,2), % recupero del gate a 2-qbit corrispondente all'operatore
-    translate([RF,q(N2),Qbits], Right), % chiamata ricorsiva per la sotto-formula destra
-    append(_,[q(N2)],Qbits), % controllo lista qbits e qbit target 
-    Layer_gate =.. [Gate, q(N1), q(N2)]. % costruzione del termine associato a gate e qbits
-
+% 2-qbit gate case
+translate([Formula,q(N2),[q(N1),q(N2)|_]], [Layer_gate, Left, Right]) :-
+    Formula =.. [Op, LF, RF], % binary formula decomposition
+    q_operator(Op), % verify operator validity
+    gate(Op,Gate,2), % get the 2-qbit gate corresponding to the operator
+    translate([LF,q(N1),QbitsL], Left), % left sub-formula recursive call
+    append(_,[q(N1)],QbitsL), % unify left qbits list and target qbit
+    translate([RF,q(N2),QbitsR], Right), % right sub-formula recursive call 
+    append(_,[q(N2)],QbitsR), % unify right qbits list and target qbit
+    Layer_gate =.. [Gate, q(N1), q(N2)]. % gate and qbits term construction
 
 % Expression normalization
 %
 % base case
 normalize(q(N), q(N)) :- !.
+%
+% De Morgan law -> A OR B = NOT (NOT A AND NOT B)
+normalize(Arg1_in qOR Arg2_in, qNOT (qNOT Arg1_out qAND qNOT Arg2_out)) :- !, 
+    normalize(Arg1_in, Arg1_out), 
+    normalize(Arg2_in, Arg2_out).
 %
 % unary operator
 normalize(Formula_in, Formula_out):- 
@@ -100,7 +109,7 @@ normalize(Formula_in, Formula_out):-
 %
 % binary operator
 normalize(Formula_in, Formula_out) :- 
-    Formula_in =.. [Op, Arg1_in, Arg2_in], 
+    Formula_in =.. [Op, Arg1_in, Arg2_in],
     normalize(Arg1_in, Arg1_out), 
     normalize(Arg2_in, Arg2_out), 
     Formula_out =.. [Op, Arg1_out, Arg2_out].
@@ -117,7 +126,14 @@ circuit_tree(Formula,Qbit,Circuit_tree) :-
 % circuit layer representation (list of lists)
 %
 qcircuit(Formula,Qbit,Layers) :-
-    circuit_tree(Formula,Qbit,Tree), layers(Tree, Layers).
+    circuit_tree(Formula,Qbit,Tree), 
+
+    % % uncomment to print non-trivial formula -> tree translations
+    % (Qbit = q(0) -> (write('Non-trivial formula -> tree translations:'), nl, write('{')) ; true),
+    % (Formula \= q(_) -> format('~n Target:  ~w~n Formula: ~p~n Tree:    ~w~n', [Qbit, Formula, Tree]) ; true),
+    % ((qnn(N), N1 is N-1, Qbit = q(N1)) -> (write('}'), nl, nl) ; true),
+    
+    layers(Tree, Layers).
 %
 % gates extraction
 %
@@ -127,10 +143,23 @@ level_gates([[Gate|_]| Rest_trees],[Gate|Rest_gates]) :-
 %
 % subtrees extraction
 %
-subtrees([],[]).
-subtrees([[_|Subs]|Rest_trees], Subtrees) :-
-    subtrees(Rest_trees, Other_subs), 
-    append(Subs, Other_subs, Subtrees).
+% base case
+subtrees([], []).
+%
+% subtrees len < 3
+subtrees([Subs | Rest_trees], Subtrees) :-  
+    length(Subs,Subs_len), Subs_len < 3,
+    Subs = [_|Rest_subs],
+    subtrees(Rest_trees, Other_subs),   
+    append(Rest_subs, Other_subs, Subtrees).
+%
+% subtrees len = 3
+subtrees([Subs | Rest_trees], Subtrees) :- 
+    length(Subs,Subs_len), Subs_len = 3,
+    Subs = [_|[_|Rest_subs]],
+    subtrees(Rest_trees, Other_subs),   
+    append(Rest_subs, Other_subs, Subtrees). 
+%
 %
 % layers construction
 layers(Tree, Levels) :- all_layers([Tree], Levels).
@@ -304,7 +333,7 @@ build_circuit(QRegister,operator(qOR),[q(N1),q(N2),q(N3)],NCircuit) :- !,
 
     % target action and negation
     complete_circuit(QRegister,QRout,exp([q(N3): qNOT (q(N1) qAND q(N2))]),NCircuit1),
-
+    
     % uncompute control negation
     complete_circuit(QRegister,NCircuit1,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),NCircuit).
 %
@@ -599,7 +628,7 @@ query11(QRout) :-
     qrange(4,CQbits),qrange(4,7,ATQbits), 
     build_circuit(QRin,n-tof,CQbits,ATQbits,QRout).
 
-% qOR query
+% qOR operator query
 %
 query12(QRout) :-
     reset_qbit_number,
@@ -632,7 +661,17 @@ query15(NC) :-
     complete_circuit(QRin,CRin,QRout,measurement,[Qbits,Cbits],NC).
 
 
-:- set_prolog_flag(answer_write_options, [max_depth(0), max_length(0)]).
+% formula portray
+%
+% infix binary op case
+portray(Formula) :- compound(Formula),Formula =.. [Op, Left, Right],current_op(_, Type, Op),member(Type, [xfx, xfy, yfx]),!,format('~p ~w ~p', [Left, Op, Right]).
+%
+% unary op case
+portray(Formula) :- compound(Formula),Formula =.. [Op, Right],current_op(_, fy, Op),!,(Right \= q(_) -> (format('~w (~p)', [Op, Right])) ; format('~w ~p', [Op, Right])).
+    
+
+% unlimited console output
+:- set_prolog_flag(answer_write_options, [max_depth(0), max_length(0)]).            
 
 
 % Tests:
