@@ -4,9 +4,16 @@ import re
 import ast
 from IPython.display import HTML
 
-def parse_qtree(input_str):
+
+def map_qtree(str, map):
+    for old_label, new_label in map.items():
+        str = str.replace(old_label,new_label)
+    return str
+
+
+def parse_qtree(str):
     pattern = r"([a-zA-Z_]\w*\((?:[^()]|\([^()]*\))*\))"
-    quoted_str = re.sub(pattern, r"'\1'", input_str)
+    quoted_str = re.sub(pattern, r"'\1'", str)
     return ast.literal_eval(quoted_str)
 
 
@@ -14,12 +21,15 @@ def draw_qtree(tree, title='Quantum Tree'):
     dot = graphviz.Digraph()
     dot.attr(rankdir='TB')
     dot.attr('node', shape='box', style='rounded, filled', fillcolor='lightgrey')
-
-    dot.attr(label=f"{title}\n\n")  
-    dot.attr(labelloc='t')       
-    dot.attr(fontsize='18')      
+    dot.attr(labelloc='t') 
     dot.attr(fontname='Helvetica') 
-
+    dot.attr(label=f"""<
+                        <FONT POINT-SIZE="20"><B>{title}</B></FONT>
+                        <BR/>
+                        <FONT POINT-SIZE="14" COLOR="grey">{tree}</FONT>
+                        <BR/>
+                    >""")  
+            
     def draw_qsubtree(subtree, parent_id=None):
         # empty list / None
         if not subtree: 
@@ -41,7 +51,7 @@ def draw_qtree(tree, title='Quantum Tree'):
         node_id = str(uuid.uuid4())
         label = str(current_val)
 
-        if re.match(r"^[q]\(\d+\)$", label):
+        if re.match(r"^[a-zA-Z]\(\d+\)$", label):
             color = 'white'      
         else:
             color = 'lightblue'  
