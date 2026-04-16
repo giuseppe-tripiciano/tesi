@@ -1,3 +1,5 @@
+:- use_module(library(debug)).
+
 % QOP/Gates
 %
 % QOP definitions
@@ -123,16 +125,17 @@ circuit_tree(Formula,Qbit,Circuit_tree) :-
     normalize(Formula, Norm_formula), !,
     translate([Norm_formula,Qbit,_], Circuit_tree).
 %
+% log of non-trivial formula-to-tree translations (enable with "debug(circuit_tree).", disable with "nodebug(circuit_tree).")
+circuit_tree_log(Formula,Qbit,Tree) :-
+    (Qbit = q(0) -> (write('Non-trivial formula -> tree translations:'), nl, write('{')) ; true),
+    (Formula \= q(_) -> format('~n Target:  ~w~n Formula: ~p~n Tree:    ~w~n', [Qbit, Formula, Tree]) ; true),
+    ((qnn(N), N1 is N-1, Qbit = q(N1)) -> (write('}'), nl, nl) ; true).
+%
 % circuit layer representation (list of lists)
 %
 qcircuit(Formula,Qbit,Layers) :-
     circuit_tree(Formula,Qbit,Tree), 
-
-    % % uncomment to print non-trivial formula -> tree translations
-    % (Qbit = q(0) -> (write('Non-trivial formula -> tree translations:'), nl, write('{')) ; true),
-    % (Formula \= q(_) -> format('~n Target:  ~w~n Formula: ~p~n Tree:    ~w~n', [Qbit, Formula, Tree]) ; true),
-    % ((qnn(N), N1 is N-1, Qbit = q(N1)) -> (write('}'), nl, nl) ; true),
-    
+    debug(circuit_tree, '~@', [circuit_tree_log(Formula,Qbit,Tree)]),
     layers(Tree, Layers).
 %
 % gates extraction
@@ -283,6 +286,11 @@ negate([],[]) :- !.
 negate([q(N)|RestIn], [q(N):qNOT q(N)|RestOut]) :-
     negate(RestIn, RestOut).
 %
+% bitwise qXOR 
+bw_qXOR([], [], []) :- !.
+bw_qXOR([Qbit1|QRest1], [Qbit2|QRest2], [Qbit2: Qbit1 qXOR Qbit2 | RestOut]) :-
+    bw_qXOR(QRest1, QRest2, RestOut).
+%
 % qXOR 1:n
 qXOR_1n(_,[],[]) :- !.
 qXOR_1n(q(C),[q(T)|RestIn],[q(T): q(C) qXOR q(T)|RestOut]) :-
@@ -378,8 +386,8 @@ build_circuit(QRegister,n-or,CQbits,ATQbits,NCircuit) :-
     negate(CQbits,Neg),
     build_circuit(QRegister,exp(Neg),QRout), !,
 
-    % n-tof (compute, target action, uncompute)
-    complete_circuit(QRegister,QRout,n-tof,CQbits,ATQbits,NCircuit1),
+    % n-tof - conj mode
+    complete_circuit(QRegister,QRout,n-tof,CQbits,ATQbits,conj,NCircuit1),
 
     % target negation
     last(ATQbits,q(T)),
@@ -388,8 +396,34 @@ build_circuit(QRegister,n-or,CQbits,ATQbits,NCircuit) :-
     % uncompute control negation
     complete_circuit(QRegister,NCircuit2,exp(Neg),NCircuit).
 %
+% n-tof default mode case
+build_circuit(QRegister,n-tof,CQbits,ATQbits,NCircuit) :- build_circuit(QRegister,n-tof,CQbits,ATQbits,conj,NCircuit).
+%
+% incrementer case
+build_circuit(QRegister,incr,q(C),[],q(T),NCircuit) :- !,
+    build_circuit(QRegister,exp([q(T): q(C) qXOR q(T)]),NCircuit1),
+    complete_circuit(QRegister,NCircuit1,exp([q(C): qNOT q(C)]),NCircuit). 
+%
+build_circuit(QRegister,incr,[q(C1),q(C2)],[],q(T),NCircuit) :- !,
+    build_circuit(QRegister,exp([q(T): q(C1) qAND q(C2)]),NCircuit1),
+    complete_circuit(QRegister,NCircuit1,incr,q(C1),_,q(C2),NCircuit).
+%
+build_circuit(QRegister,incr,CQbits,AQbits,q(T),NCircuit) :- 
+    append(AQbits,[q(T)],ATQbits),
+    build_circuit(QRegister,n-tof,CQbits,ATQbits,NCircuit1),
+    append(CQRest,[q(T1)],CQbits),
+    append(AQRest,[q(_)],AQbits),
+    complete_circuit(QRegister,NCircuit1,incr,CQRest,AQRest,q(T1),NCircuit).
+%
+% decrementer case
+build_circuit(QRegister,decr,CQbits,AQbits,TQbit,NCircuit) :-
+    build_circuit(QRegister,incr,CQbits,AQbits,TQbit,NCircuit1),
+    reverse(NCircuit1,NCircuit).
+%
 % n-tof case
-build_circuit(QRegister,n-tof,CQbits,ATQbits,NCircuit) :-
+build_circuit(_,n-tof,[q(_)],[],_,[]) :- !.
+%
+build_circuit(QRegister,n-tof,CQbits,ATQbits,Mode,NCircuit) :-
     % query validation
     length(CQbits,CQ_len), CQ_len > 1, length(ATQbits,ATQ_len), ATQ_len is CQ_len - 1,
 
@@ -400,7 +434,7 @@ build_circuit(QRegister,n-tof,CQbits,ATQbits,NCircuit) :-
     build_circuit(QRegister,exp([q(T): q(C1) qAND q(C2)]),QRout),
 
     % n-tof
-    complete_circuit(QRegister,[],QRout,n-tof,CQRest,ATQbits,NCircuit).
+    complete_circuit(QRegister,[],QRout,n-tof,CQRest,ATQbits,Mode,NCircuit).
 
 
 % Circuit structure cleaning
@@ -501,8 +535,8 @@ complete_circuit(QRegister,PCircuit,n-or,CQbits,ATQbits,NCircuit) :-
     negate(CQbits,Neg),
     complete_circuit(QRegister,PCircuit,exp(Neg),NCircuit1), !,
 
-    % n-tof (compute, target action, uncompute)
-    complete_circuit(QRegister,NCircuit1,n-tof,CQbits,ATQbits,NCircuit2),
+    % n-tof - conj mode
+    complete_circuit(QRegister,NCircuit1,n-tof,CQbits,ATQbits,conj,NCircuit2),
 
     % target negation
     last(ATQbits,q(T)),
@@ -511,10 +545,38 @@ complete_circuit(QRegister,PCircuit,n-or,CQbits,ATQbits,NCircuit) :-
     % uncompute control negation
     complete_circuit(QRegister,NCircuit3,exp(Neg),NCircuit).
 %
+% n-tof default mode case
+complete_circuit(QRegister,PCircuit,n-tof,CQbits,ATQbits,NCircuit) :- complete_circuit(QRegister,PCircuit,n-tof,CQbits,ATQbits,conj,NCircuit).
+%
+% incrementer case
+%
+complete_circuit(QRegister,PCircuit,incr,q(C),[],q(T),NCircuit) :- !,
+    complete_circuit(QRegister,PCircuit,exp([q(T): q(C) qXOR q(T)]),NCircuit1),
+    complete_circuit(QRegister,NCircuit1,exp([q(C): qNOT q(C)]),NCircuit). 
+%
+complete_circuit(QRegister,PCircuit,incr,[q(C1),q(C2)],[],q(T),NCircuit) :- !,
+    complete_circuit(QRegister,PCircuit,exp([q(T): q(C1) qAND q(C2)]),NCircuit1),
+    complete_circuit(QRegister,NCircuit1,incr,q(C1),_,q(C2),NCircuit).
+%
+complete_circuit(QRegister,PCircuit,incr,CQbits,AQbits,q(T),NCircuit) :- 
+    append(AQbits,[q(T)],ATQbits),
+    complete_circuit(QRegister,PCircuit,n-tof,CQbits,ATQbits,NCircuit1),
+    append(CQRest,[q(T1)],CQbits),
+    append(AQRest,[q(_)],AQbits),
+    complete_circuit(QRegister,NCircuit1,incr,CQRest,AQRest,q(T1),NCircuit).
+%
+% decrementer case
+complete_circuit(QRegister,PCircuit,decr,CQbits,AQbits,TQbit,NCircuit) :-
+    build_circuit(QRegister,incr,CQbits,AQbits,TQbit,NCircuit1),
+    reverse(NCircuit1,NCircuit2),
+    append(PCircuit,NCircuit2,NCircuit).
+%
 % n-tof case
 %
 % n-tof init
-complete_circuit(QRegister,PCircuit,n-tof,CQbits,ATQbits,NCircuit) :-
+complete_circuit(_,PCircuit,n-tof,[q(_)],[],_,PCircuit) :- !.
+%
+complete_circuit(QRegister,PCircuit,n-tof,CQbits,ATQbits,Mode,NCircuit) :-
     % query validation
     length(CQbits,CQ_len), CQ_len > 1, length(ATQbits,ATQ_len), ATQ_len is CQ_len - 1,
 
@@ -528,10 +590,10 @@ complete_circuit(QRegister,PCircuit,n-tof,CQbits,ATQbits,NCircuit) :-
     append(PCircuit,TOF_PCircuit,NCircuit1),
 
     % n-tof
-    complete_circuit(QRegister,PCircuit,TOF_PCircuit,n-tof,CQRest,ATQbits,NCircuit).
+    complete_circuit(QRegister,PCircuit,TOF_PCircuit,n-tof,CQRest,ATQbits,Mode,NCircuit).
 %
-% n-tof base
-complete_circuit(_,PCircuit,TOF_PCircuit,n-tof,[],_,NCircuit) :- 
+% n-tof base - conj mode
+complete_circuit(_,PCircuit,TOF_PCircuit,n-tof,[],_,conj,NCircuit) :- 
     % uncompute
     reverse(TOF_PCircuit,TOF_InvCircuit1),
     TOF_InvCircuit1 = [_|TOF_InvCircuit],
@@ -542,16 +604,51 @@ complete_circuit(_,PCircuit,TOF_PCircuit,n-tof,[],_,NCircuit) :-
     % compose circuit
     append(PCircuit,TOF_Circuit,NCircuit).
 %
+% n-tof base - chain mode
+complete_circuit(_,PCircuit,TOF_PCircuit,n-tof,[],_,chain,NCircuit) :-
+    % compose circuit
+    append(PCircuit,TOF_PCircuit,NCircuit).
+%
 % n-tof
-complete_circuit(QRegister,PCircuit,TOF_PCircuit,n-tof,CQbits,ATQbits,TOF_NCircuit) :-
-    % compute a tof (last is target action)
+complete_circuit(QRegister,PCircuit,TOF_PCircuit,n-tof,CQbits,ATQbits,Mode,TOF_NCircuit) :-
+    % compute tof 
     CQbits = [q(C)|CQRest],
     ATQbits = [q(A)|ATQRest],
     ATQRest = [q(T)|_],
     complete_circuit(QRegister,TOF_PCircuit,exp([q(T): q(C) qAND q(A)]),TOF_NCircuit1),
 
     % n-tof
-    complete_circuit(QRegister,PCircuit,TOF_NCircuit1,n-tof,CQRest,ATQRest,TOF_NCircuit).
+    complete_circuit(QRegister,PCircuit,TOF_NCircuit1,n-tof,CQRest,ATQRest,Mode,TOF_NCircuit).
+
+
+% Output compression
+%
+% compress
+%
+compress([], []) :- !.
+%
+compress([[SubExp|SubRest] | Rest], [FSubRest|FRest]) :- !,
+    compress([SubExp|SubRest], FSubRest),
+    compress(Rest, FRest).
+%
+compress([q(N):q(N)|Rest],FRest) :- !,
+    compress(Rest,FRest).
+%
+compress([q(N):X|Rest], [q(N):X|FRest]) :- 
+    compress(Rest,FRest).
+
+
+% Formula portray
+%
+% infix binary op case
+portray(Formula) :- compound(Formula),Formula =.. [Op, Left, Right],current_op(_, Type, Op),member(Type, [xfx, xfy, yfx]),!,format('~p ~w ~p', [Left, Op, Right]).
+%
+% unary op case
+portray(Formula) :- compound(Formula),Formula =.. [Op, Right],current_op(_, fy, Op),!,(Right \= q(_) -> (format('~w (~p)', [Op, Right])) ; format('~w ~p', [Op, Right])).
+    
+
+% unlimited console output
+:- set_prolog_flag(answer_write_options, [max_depth(0), max_length(0)]).            
 
 
 % Test
@@ -660,20 +757,18 @@ query15(NC) :-
     build_circuit(QRin,ghz,Qbits,QRout),
     complete_circuit(QRin,CRin,QRout,measurement,[Qbits,Cbits],NC).
 
-
-% formula portray
+% incrementer query
 %
-% infix binary op case
-portray(Formula) :- compound(Formula),Formula =.. [Op, Left, Right],current_op(_, Type, Op),member(Type, [xfx, xfy, yfx]),!,format('~p ~w ~p', [Left, Op, Right]).
+query16(QRout) :-
+    reset_qbit_number,
+    make_qbits(9,QRin),
+    qrange(5,CQbits),qrange(6,9,AQbits),Overflow_Qbit = q(5),
+    build_circuit(QRin,incr,CQbits,AQbits,Overflow_Qbit,QRout).
+
 %
-% unary op case
-portray(Formula) :- compound(Formula),Formula =.. [Op, Right],current_op(_, fy, Op),!,(Right \= q(_) -> (format('~w (~p)', [Op, Right])) ; format('~w ~p', [Op, Right])).
-    
-
-% unlimited console output
-:- set_prolog_flag(answer_write_options, [max_depth(0), max_length(0)]).            
 
 
+%
 % Tests:
 %
 % Query:  query1(QR).
