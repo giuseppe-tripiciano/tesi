@@ -51,7 +51,7 @@ def draw_qtree(tree, title='Quantum Tree'):
         node_id = str(uuid.uuid4())
         label = str(current_val)
 
-        if re.match(r"^[a-zA-Z]\(\d+\)$", label):
+        if re.match(r"^[a-zA-Z_]+\(\d+\)$", label):
             color = 'white'      
         else:
             color = 'lightblue'  
