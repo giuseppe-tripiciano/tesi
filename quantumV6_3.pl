@@ -4,17 +4,17 @@
 %
 % QOP definitions
 :- op(120, yfx, qAND).
-:- op(150, yfx, qOR).
-:- op(150, xfy, [qXOR, qCZ, qCS]).
+:- op(150, xfy, [qXOR, qCH, qCY, qCZ, qCS]).
 :- op(100, fy, [qH, qNOT, qRNOT, qY, qZ, qS, qT]).
 %
 % check QOP validity
-q_operator(X) :- member(X, [qAND, qOR, qXOR, qH, qNOT, qRNOT, qSWAP, qCSWAP, qY, qZ, qS, qT, qCZ, qCS, qCSWAP, qCZ, qCS]).
+q_operator(X) :- member(X, [qAND, qXOR, qH, qCH, qNOT, qRNOT, qSWAP, qCSWAP, qY, qZ, qS, qT, qCY, qCZ, qCS]).
 %
 % gate definitions
 gate(qAND,tof,3).
 gate(qXOR,cnot,2).
 gate(qH,h,1).
+gate(qCH,ch,2).
 gate(qNOT,not,1).
 gate(qRNOT,rnot,1).
 gate(qSWAP,swap,2).
@@ -23,6 +23,7 @@ gate(qY,pauli_Y,1).
 gate(qZ,pauli_Z,1).
 gate(qS,phase,1).
 gate(qT,pi_8,1).
+gate(qCY,c_pauli_Y,2).
 gate(qCZ,c_pauli_Z,2).
 gate(qCS,c_phase,2).
 
@@ -97,11 +98,6 @@ translate([Formula,q(N2),[q(N1),q(N2)|_]], [Layer_gate, Left, Right]) :-
 %
 % base case
 normalize(q(N), q(N)) :- !.
-%
-% De Morgan law -> A OR B = NOT (NOT A AND NOT B)
-normalize(Arg1_in qOR Arg2_in, qNOT (qNOT Arg1_out qAND qNOT Arg2_out)) :- !, 
-    normalize(Arg1_in, Arg1_out), 
-    normalize(Arg2_in, Arg2_out).
 %
 % unary operator
 normalize(Formula_in, Formula_out):- 
@@ -244,17 +240,11 @@ apply_operator(measurement,[Qbits,Cbits],QRegister,CRegister,RegOut) :-
     fill_register(RegIn,Exp,RegOut).
 % 
 %
-% CZ exp
-make_exps(c_pauli_Z,[Qbit1:Qbit1,Qbit2:[c_pauli_Z(Qbit1,Qbit2)]]).
-%
-% CP exp
-make_exps(c_phase,[Qbit1:Qbit1,Qbit2:[c_phase(Qbit1,Qbit2)]]).
-%
 % SWAP exp
-make_exps(swap,[Qbit1:[swap(Qbit2,Qbit1)],Qbit2:[swap(Qbit1,Qbit2)]]).
+make_exps(swap,[Qbit1:Qbit1,Qbit2:[swap(Qbit1,Qbit2)]]).
 %
 % Fredkin exp
-make_exps(fredkin,[Qbit1:Qbit1,Qbit2:[cswap(Qbit1,Qbit3,Qbit2)],Qbit3:[cswap(Qbit1,Qbit2,Qbit3)]]).
+make_exps(fredkin,[Qbit1:Qbit1,Qbit2:Qbit2,Qbit3:[cswap(Qbit1,Qbit2,Qbit3)]]).
 %
 % measurement exp
 %
@@ -337,13 +327,14 @@ build_circuit(QRegister,exp(Exp),[FCircuit]) :-
 % De Morgan law -> Q1 qOR Q2 = qNOT (qNOT Q1 qAND qNOT Q2)
 build_circuit(QRegister,operator(qOR),[q(N1),q(N2),q(N3)],NCircuit) :- !,
     % compute control negation
-    build_circuit(QRegister,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),QRout),
+    build_circuit(QRegister,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),[QRout]),
 
     % target action and negation
-    complete_circuit(QRegister,QRout,exp([q(N3): qNOT (q(N1) qAND q(N2))]),NCircuit1),
+    complete_circuit(QRegister,[QRout],exp([q(N3): qNOT (q(N1) qAND q(N2))]),NCircuit1),
     
     % uncompute control negation
-    complete_circuit(QRegister,NCircuit1,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),NCircuit).
+    reverse(QRout,Inv_QRout),
+    append(NCircuit1,[Inv_QRout],NCircuit).
 %
 % QOP case
 build_circuit(QRegister,operator(QOP),Qbits,[Circuit]) :-
@@ -384,17 +375,18 @@ build_circuit(QRegister,parity,CQbits,[q(A),q(T)],NCircuit) :-
 build_circuit(QRegister,n-or,CQbits,ATQbits,NCircuit) :- 
     % compute control negation
     negate(CQbits,Neg),
-    build_circuit(QRegister,exp(Neg),QRout), !,
+    build_circuit(QRegister,exp(Neg),[QRout]), !,
 
     % n-tof - conj mode
-    complete_circuit(QRegister,QRout,n-tof,CQbits,ATQbits,conj,NCircuit1),
+    complete_circuit(QRegister,[QRout],n-tof,CQbits,ATQbits,conj,NCircuit1),
 
     % target negation
     last(ATQbits,q(T)),
     complete_circuit(QRegister,NCircuit1,exp([q(T): qNOT q(T)]),NCircuit2),
 
     % uncompute control negation
-    complete_circuit(QRegister,NCircuit2,exp(Neg),NCircuit).
+    reverse(QRout,Inv_QRout),
+    append(NCircuit2,[Inv_QRout],NCircuit).
 %
 % n-tof default mode case
 build_circuit(QRegister,n-tof,CQbits,ATQbits,NCircuit) :- build_circuit(QRegister,n-tof,CQbits,ATQbits,conj,NCircuit).
@@ -471,13 +463,17 @@ complete_circuit(QRegister,PCircuit,exp(Exp),NCircuit) :-
 % De Morgan law -> Q1 qOR Q2 = qNOT (qNOT Q1 qAND qNOT Q2)
 complete_circuit(QRegister,PCircuit,operator(qOR),[q(N1),q(N2),q(N3)],NCircuit) :- !,
     % compute control negation
-    complete_circuit(QRegister,PCircuit,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),NCircuit1),
+    build_circuit(QRegister,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),[QRout]),
 
     % target action and negation
-    complete_circuit(QRegister,NCircuit1,exp([q(N3): qNOT (q(N1) qAND q(N2))]),NCircuit2),
+    complete_circuit(QRegister,[QRout],exp([q(N3): qNOT (q(N1) qAND q(N2))]),NCircuit1),
 
     % uncompute control negation
-    complete_circuit(QRegister,NCircuit2,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),NCircuit).
+    reverse(QRout,Inv_QRout),
+    append(NCircuit1,[Inv_QRout],NCircuit2),
+
+    % append to partital circuit
+    append(PCircuit,NCircuit2,NCircuit).
 %
 % QOP case
 complete_circuit(QRegister,PCircuit,operator(QOP),Qbits,NCircuit) :-
@@ -533,17 +529,21 @@ complete_circuit(QRegister,CRegister,PCircuit,measurement,[Qbits,Cbits],NCircuit
 complete_circuit(QRegister,PCircuit,n-or,CQbits,ATQbits,NCircuit) :-
     % compute control negation
     negate(CQbits,Neg),
-    complete_circuit(QRegister,PCircuit,exp(Neg),NCircuit1), !,
+    build_circuit(QRegister,exp(Neg),[QRout]), !,
 
     % n-tof - conj mode
-    complete_circuit(QRegister,NCircuit1,n-tof,CQbits,ATQbits,conj,NCircuit2),
+    complete_circuit(QRegister,[QRout],n-tof,CQbits,ATQbits,conj,NCircuit1),
 
     % target negation
     last(ATQbits,q(T)),
-    complete_circuit(QRegister,NCircuit2,exp([q(T): qNOT q(T)]),NCircuit3),
+    complete_circuit(QRegister,NCircuit1,exp([q(T): qNOT q(T)]),NCircuit2),
 
     % uncompute control negation
-    complete_circuit(QRegister,NCircuit3,exp(Neg),NCircuit).
+    reverse(QRout,Inv_QRout),
+    append(NCircuit2,[Inv_QRout],NCircuit3),
+
+    % append to partial circuit
+    append(PCircuit,NCircuit3,NCircuit).
 %
 % n-tof default mode case
 complete_circuit(QRegister,PCircuit,n-tof,CQbits,ATQbits,NCircuit) :- complete_circuit(QRegister,PCircuit,n-tof,CQbits,ATQbits,conj,NCircuit).
@@ -648,7 +648,7 @@ portray(Formula) :- compound(Formula),Formula =.. [Op, Right],current_op(_, fy, 
     
 
 % unlimited console output
-:- set_prolog_flag(answer_write_options, [max_depth(0), max_length(0)]).            
+:- set_prolog_flag(answer_write_options, [max_depth(0), max_length(0)]).
 
 
 % Test
