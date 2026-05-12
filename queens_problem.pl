@@ -16,13 +16,12 @@ checksDIM(N, ChecksDIM) :-
 %
 % aux ancilla dim
 auxDIM(ChecksDIM, AuxDIM) :-
-    AuxDIM is ChecksDIM - 2.
+    AuxDIM is ChecksDIM - 3.
 %
 % dim = 
-% = state dim (N*QueenDIM) + bitwise qXOR dim (QueenDIM) + checks dim (N*(N-1))/2) + overflow dim (1)
-%   + col test dim (1) + diag diff test dim (1) + diag sum test dim (1) + test dim (1) + aux dim (ChecksDIM-2) 
+% = state dim (N*QueenDIM) + bitwise qXOR dim (QueenDIM) + overflow dim (1) + checks dim (N*(N-1))/2) + aux dim (ChecksDIM-3) 
 dim(StateDIM, QueenDIM, ChecksDIM, AuxDIM, DIM) :-
-    DIM is StateDIM + QueenDIM + ChecksDIM + 5 + AuxDIM.
+    DIM is StateDIM + QueenDIM + ChecksDIM + AuxDIM + 1.
 %
 % get dims
 get_dims(N, QueenDIM, StateDIM, ChecksDIM, AuxDIM, DIM) :-
@@ -46,16 +45,15 @@ queens_split(State_Qbits, QueenDIM, [Queen | Rest]) :-
 
 %% MODULAR SUBCIRCUITS
 %
-% nor subcircuit
-nor_subcircuit(QRin, NOT_Qbits, CQbits, ATQbits, NOR_Subcircuit) :-
-    negate(NOT_Qbits, Neg_Exp), 
-    build_circuit(QRin, exp(Neg_Exp), NOT_SubCircuit),
-    complete_circuit(QRin, NOT_SubCircuit, n-tof, CQbits, ATQbits, chain, NOR_Subcircuit).
+% check subcircuits
+check_subcircuit(QRin, CQbits, ATQbits, Check_SubCircuit, Inv_Check_SubCircuit) :-
+    build_circuit(QRin, n-tof, CQbits, ATQbits, chain, Check_SubCircuit),
+    reverse(Check_SubCircuit, Inv_Check_SubCircuit).
 %
-% incrementer subcircuit
-incr_subcircuit(QRin, CQbits, AQbits, Overflow_Qbit, Incr_SubCircuit) :-
-    build_circuit(QRin, incr, CQbits, AQbits, Overflow_Qbit, Incr_SubCircuit).
-%
+% offset subcircuits
+incr_subcircuit(QRin, CQbits, AQbits, Overflow_Qbit, Incr_SubCircuit, Decr_SubCircuit) :-
+    build_circuit(QRin, incr, CQbits, AQbits, Overflow_Qbit, Incr_SubCircuit),
+    reverse(Incr_SubCircuit, Decr_SubCircuit).
 
 
 
@@ -64,17 +62,16 @@ incr_subcircuit(QRin, CQbits, AQbits, Overflow_Qbit, Incr_SubCircuit) :-
 init(N,
 
     % base args
-    QRin, Queens, XOR_Qbits, Check_Qbits, 
+    QRin, Queens, XOR_Qbits, Check_Qbits, Aux_Qbits,
 
     % column equality args  
-    CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, CEQ_Test_Qbits,   
+    CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit, XOR_FQbit, CEQ_Check_FQbit,   
 
     % diagonal equality args                   
-    DEQ_Incr_SubCircuit, Inv_DEQ_Incr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit, 
-    Overflow_Qbit, DEQ_Check_FQbit, DDEQ_Test_Qbits, SDEQ_Test_Qbits, 
-
-    % test equality args  
-    PTest_Qbits, Test_Qbits) :-
+    DEQ_Incr_SubCircuit, DEQ_Decr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit, 
+    Overflow_Qbit, DEQ_Check_FQbit
+    
+    ) :-
 
 
     % circuit sizing
@@ -92,11 +89,18 @@ init(N,
     queens_split(State_Qbits, QueenDIM, Queens),
     %
     % xor qbits
-    Overflow_idx is StateDIM + QueenDIM, 
-    qrange(StateDIM, Overflow_idx, XOR_Qbits), 
+    Aux_start is StateDIM + QueenDIM, 
+    qrange(StateDIM, Aux_start, XOR_Qbits), 
+    %
+    % aux qbits
+    Aux_end is Aux_start + AuxDIM,
+    qrange(Aux_start, Aux_end, Aux_Qbits),
+    %
+    % overflow qbit
+    Overflow_Qbit = q(Aux_end),
     %
     % check qbits
-    Checks_start is Overflow_idx + 1,
+    Checks_start is Aux_end + 1,
     Checks_end is Checks_start + ChecksDIM,
     qrange(Checks_start, Checks_end, Check_Qbits),
 
@@ -104,20 +108,19 @@ init(N,
     % column equality args 
     %
     % xor qbits except last one
-    XOR_end is Overflow_idx - 1,
+    XOR_end is Aux_start - 1,
     qrange(StateDIM, XOR_end, XOR_PQbits),
     %
     % ceq check subcircuit 
-    Aux_start is DIM - AuxDIM,
     CEQ_Check_Aux_end is Aux_start + QueenDIM - 2, qrange(Aux_start, CEQ_Check_Aux_end, CEQ_Check_Aux_Qbits), 
-    nor_subcircuit(QRin, XOR_Qbits, XOR_PQbits, CEQ_Check_Aux_Qbits, CEQ_NOR_SubCircuit), reverse(CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit),
+    check_subcircuit(QRin, XOR_PQbits, CEQ_Check_Aux_Qbits, CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit),
     %
     % ceq check last qbit and xor qbit
-    CEQ_Check_FQbit_idx is CEQ_Check_Aux_end - 1,
     (   QueenDIM > 2 ->
 
         % xor last qbit case
         XOR_FQbit = q(XOR_end),
+        CEQ_Check_FQbit_idx is CEQ_Check_Aux_end - 1,
         CEQ_Check_FQbit = q(CEQ_Check_FQbit_idx)
         ;
         % xor first qbit case
@@ -125,112 +128,55 @@ init(N,
         CEQ_Check_FQbit = q(XOR_end)
         
     ),
-    %
-    % ceq test qbits
-    qrange(Aux_start, DIM, Aux_Qbits),
-    CEQ_Test_idx is Aux_start - 4, 
-    CEQ_Test_TQbit = q(CEQ_Test_idx),
-    append(Aux_Qbits, [CEQ_Test_TQbit], CEQ_Test_Qbits),
 
 
     % diagonal equality args
     %
-    % overflow qbit
-    Overflow_Qbit = q(Overflow_idx),
-    %
     % deq incr subcircuit
     DEQ_Incr_Aux_end is Aux_start + QueenDIM - 2, qrange(Aux_start, DEQ_Incr_Aux_end, DEQ_Incr_Aux_Qbits),
-    incr_subcircuit(QRin, XOR_Qbits, DEQ_Incr_Aux_Qbits, Overflow_Qbit, DEQ_Incr_SubCircuit), reverse(DEQ_Incr_SubCircuit, Inv_DEQ_Incr_SubCircuit),
+    incr_subcircuit(QRin, XOR_Qbits, DEQ_Incr_Aux_Qbits, Overflow_Qbit, DEQ_Incr_SubCircuit, DEQ_Decr_SubCircuit),
     %
     % deq check subcircuit
-    qrange(StateDIM, Checks_start, XOR_Overflow_Qbits),
     DEQ_Check_Aux_end is Aux_start + QueenDIM - 1, qrange(Aux_start, DEQ_Check_Aux_end, DEQ_Check_Aux_Qbits),
-    nor_subcircuit(QRin, XOR_Overflow_Qbits, XOR_Qbits, DEQ_Check_Aux_Qbits, DEQ_NOR_SubCircuit), reverse(DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit),
+    check_subcircuit(QRin, XOR_Qbits, DEQ_Check_Aux_Qbits, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit),
     %
     % deq check last qbit
     DEQ_Check_FQbit_idx is DEQ_Check_Aux_end - 1,
-    DEQ_Check_FQbit = q(DEQ_Check_FQbit_idx),
-    %
-    % diff deq test qbits
-    DDEQ_Test_idx is Aux_start - 3, 
-    DDEQ_Test_TQbit = q(DDEQ_Test_idx),
-    append(Aux_Qbits, [DDEQ_Test_TQbit], DDEQ_Test_Qbits),
-    %
-    % sum deq test qbits
-    SDEQ_Test_idx is Aux_start - 2, 
-    SDEQ_Test_TQbit = q(SDEQ_Test_idx),
-    append(Aux_Qbits, [SDEQ_Test_TQbit], SDEQ_Test_Qbits),
+    DEQ_Check_FQbit = q(DEQ_Check_FQbit_idx).
+    
 
 
-    % test args
-    %
-    % partial test qbits
-    PTest_Qbits = [CEQ_Test_TQbit, DDEQ_Test_TQbit, SDEQ_Test_TQbit],
-    %
-    % test qbits
-    Test_Aux_Qbit = q(Aux_start),
-    Test_idx is Aux_start - 1,
-    Test_TQbit = q(Test_idx),
-    Test_Qbits = [Test_Aux_Qbit, Test_TQbit].
-
-
-
-%% EQUALITY CONJUGATION OPERATOR
+%% COLUMN EQUALITY COMPUTE
 %
-eq_conj(QRin, EQ_Compute, Check_Qbits, EQ_Test_Qbits, EQ_Circuit) :-
-
-    % checks negation
-    negate(Check_Qbits, Neg_Exp),
-    build_circuit(QRin, exp(Neg_Exp), [Neg_Circuit]),
-
-
-    % test
-    build_circuit(QRin, n-tof, Check_Qbits, EQ_Test_Qbits, EQ_Test),
-
-    % uncompute
-    reverse(EQ_Compute, EQ_Uncompute),
-
-
-    % equality circuit
-    EQ_Neg_Test = [Neg_Circuit | EQ_Test],
-    EQ_Neg_Uncompute = [Neg_Circuit | EQ_Uncompute],
-    append(EQ_Neg_Test, EQ_Neg_Uncompute, EQ_Test_Uncompute),
-    append(EQ_Compute, EQ_Test_Uncompute, EQ_Circuit).
-
-
-
-%% COLUMN EQUALITY
+col_eq_compute(_, CEQ_Circuit, [_], _, _, _, _, _, _, _, CEQ_Circuit) :- !.
 %
-% column equality conjugation
-col_eq_conj(QRin, CEQ_Compute, [_], _, _, _, _, _, Check_Qbits, CEQ_Test_Qbits, _, CEQ_Circuit) :- !,
-
-    % equality conjugation operator
-    eq_conj(QRin, CEQ_Compute, Check_Qbits, CEQ_Test_Qbits, CEQ_Circuit).
-%
-col_eq_conj(QRin, CEQ_PCircuit, [Queen | Rest], XOR_Qbits, CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, Check_Qbits, CEQ_Test_Qbits, CheckRest, CEQ_Circuit) :- 
+col_eq_compute(QRin, CEQ_PCircuit, [Queen | Rest], XOR_Qbits, CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, Check_Qbits, CheckRest, CEQ_Circuit) :- 
 
     % queen fanout
     bw_qXOR(Queen, XOR_Qbits, XOR_Exp),
     build_circuit(QRin, exp(XOR_Exp), [Fanout_Circuit]),
 
 
-    % checks partial circuit
-    col_eq(QRin, [], Rest, XOR_Qbits, CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, CheckRest, CheckRest1, CEQ_Checks_PCircuit), 
+    % column equality checks
+    col_eq(QRin, [], Rest, XOR_Qbits, CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, CheckRest, CheckRest1, CEQ_Checks_PCircuit), 
 
 
     % checks circuit
     CEQ_Checks_PCircuit1 = [Fanout_Circuit | CEQ_Checks_PCircuit],
-    append(CEQ_Checks_PCircuit1, [Fanout_Circuit], CEQ_Checks_Circuit),
+    reverse(Fanout_Circuit, Inv_Fanout_Circuit),
+    append(CEQ_Checks_PCircuit1, [Inv_Fanout_Circuit], CEQ_Checks_Circuit),
+
 
     % partial circuit append
     append(CEQ_PCircuit, CEQ_Checks_Circuit, CEQ_PCircuit1),
 
-    col_eq_conj(QRin, CEQ_PCircuit1, Rest, XOR_Qbits, CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, Check_Qbits, CEQ_Test_Qbits, CheckRest1, CEQ_Circuit).
+
+    col_eq_compute(QRin, CEQ_PCircuit1, Rest, XOR_Qbits, CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, Check_Qbits, CheckRest1, CEQ_Circuit).
 %
-% column equality checks
+% 
 col_eq(_, CEQ_PCircuit, [], _, _, _, _, _, PCheckRest, PCheckRest, CEQ_PCircuit) :- !.
 %
-col_eq(QRin, CEQ_PCircuit, [Queen | Rest], XOR_Qbits, CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, [Check_Qbit | PCheckRest], CheckRest, CEQ_Circuit) :- 
+col_eq(QRin, CEQ_PCircuit, [Queen | Rest], XOR_Qbits, CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, [Check_Qbit | PCheckRest], CheckRest, CEQ_Circuit) :- 
 
     % queens qXOR
     bw_qXOR(Queen, XOR_Qbits, XOR_Exp),
@@ -238,61 +184,63 @@ col_eq(QRin, CEQ_PCircuit, [Queen | Rest], XOR_Qbits, CEQ_NOR_SubCircuit, Inv_CE
 
 
     % check compute
-    CEQ_Check_Compute = [XOR_Circuit | CEQ_NOR_SubCircuit],
+    CEQ_Check_Compute = [XOR_Circuit | CEQ_Check_SubCircuit],
     
     % check action
     build_circuit(QRin, exp([Check_Qbit: XOR_FQbit qAND CEQ_Check_FQbit]), [CEQ_Check_Action]),
 
     % check uncompute
-    append(Inv_CEQ_NOR_SubCircuit, [XOR_Circuit], CEQ_Check_Uncompute),
+    reverse(XOR_Circuit, Inv_XOR_Circuit),
+    append(Inv_CEQ_Check_SubCircuit, [Inv_XOR_Circuit], CEQ_Check_Uncompute),
 
 
-    % check circuit
+    % col eq circuit
     CEQ_Check_Action_Uncompute = [CEQ_Check_Action | CEQ_Check_Uncompute],
     append(CEQ_Check_Compute, CEQ_Check_Action_Uncompute, CEQ_Check_Circuit),    
+
 
     % partial circuit append
     append(CEQ_PCircuit, CEQ_Check_Circuit, CEQ_PCircuit1),
 
-    col_eq(QRin, CEQ_PCircuit1, Rest, XOR_Qbits, CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, PCheckRest, CheckRest, CEQ_Circuit).
+
+    col_eq(QRin, CEQ_PCircuit1, Rest, XOR_Qbits, CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, PCheckRest, CheckRest, CEQ_Circuit).
 
 
 
-%% DIAGONAL EQUALITY
+%% DIAGONAL EQUALITY COMPUTE
 %
-% diagonal equality conjugation
-diag_eq_conj(QRin, DEQ_Compute, [_], _, _, _, _, _, _, _, Check_Qbits, DEQ_Test_Qbits, _, DEQ_Circuit) :- !,
-
-    % equality conjugation operator
-    eq_conj(QRin, DEQ_Compute, Check_Qbits, DEQ_Test_Qbits, DEQ_Circuit).
+diag_eq_compute(_, DEQ_Circuit, [_], _, _, _, _, _, _, _, _, _, DEQ_Circuit) :- !.
 %
-diag_eq_conj(QRin, DEQ_PCircuit, [Queen | Rest], XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, Check_Qbits, DEQ_Test_Qbits, CheckRest, DEQ_Circuit) :-  
+diag_eq_compute(QRin, DEQ_PCircuit, [Queen | Rest], XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, Check_Qbits, CheckRest, DEQ_Circuit) :-  
 
     % queen fanout
     bw_qXOR(Queen, XOR_Qbits, XOR_Exp),
     build_circuit(QRin, exp(XOR_Exp), [Fanout_Circuit]),
 
 
-    % checks partial circuit
-    diag_eq(QRin, [], Rest, XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, CheckRest, CheckRest1, [], DEQ_Checks_PCircuit),
+    % diagonal equality checks
+    diag_eq(QRin, [], Rest, XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, CheckRest, CheckRest1, [], DEQ_Checks_PCircuit),
 
 
     % checks circuit
     DEQ_Checks_PCircuit1 = [Fanout_Circuit | DEQ_Checks_PCircuit],
-    append(DEQ_Checks_PCircuit1, [Fanout_Circuit], DEQ_Checks_Circuit),
+    reverse(Fanout_Circuit, Inv_Fanout_Circuit),
+    append(DEQ_Checks_PCircuit1, [Inv_Fanout_Circuit], DEQ_Checks_Circuit),
+
 
     % partial circuit append
     append(DEQ_PCircuit, DEQ_Checks_Circuit, DEQ_PCircuit1),
 
-    diag_eq_conj(QRin, DEQ_PCircuit1, Rest, XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, Check_Qbits, DEQ_Test_Qbits, CheckRest1, DEQ_Circuit).
+
+    diag_eq_compute(QRin, DEQ_PCircuit1, Rest, XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, Check_Qbits, CheckRest1, DEQ_Circuit).
 %
-% diagonal equality checks
+%
 diag_eq(_, DEQ_PCircuit, [], _, _, _, _, _, _, _, PCheckRest, PCheckRest, Inv_DEQ_Ctr_Chain, DEQ_PCircuit1) :- !,
 
     % ctr uncompute chain append
     append(DEQ_PCircuit, Inv_DEQ_Ctr_Chain, DEQ_PCircuit1).
 %
-diag_eq(QRin, DEQ_PCircuit, [Queen | Rest], XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, [Check_Qbit | PCheckRest], CheckRest, Inv_DEQ_Ctr_PChain, DEQ_Circuit) :- 
+diag_eq(QRin, DEQ_PCircuit, [Queen | Rest], XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, [Check_Qbit | PCheckRest], CheckRest, Inv_DEQ_Ctr_PChain, DEQ_Circuit) :- 
 
     % queens qXOR
     bw_qXOR(Queen, XOR_Qbits, XOR_Exp),
@@ -300,103 +248,143 @@ diag_eq(QRin, DEQ_PCircuit, [Queen | Rest], XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_D
 
 
     % check compute
-    DEQ_Check_Compute = [XOR_Circuit | DEQ_NOR_SubCircuit],
+    DEQ_Check_Compute = [XOR_Circuit | DEQ_Check_SubCircuit],
 
     % check action
     build_circuit(QRin, exp([Check_Qbit: Overflow_Qbit qAND DEQ_Check_FQbit]), [DEQ_Check_Action]),
 
     % check uncompute
-    append(Inv_DEQ_NOR_SubCircuit, [XOR_Circuit], DEQ_Check_Uncompute),
+    reverse(XOR_Circuit, Inv_XOR_Circuit),
+    append(Inv_DEQ_Check_SubCircuit, [Inv_XOR_Circuit], DEQ_Check_Uncompute),
 
 
-    % check circuit
+    % diag eq circuit
     DEQ_Check_Action_Uncompute = [DEQ_Check_Action | DEQ_Check_Uncompute],
     append(DEQ_Check_Compute, DEQ_Check_Action_Uncompute, DEQ_Check_Circuit),  
-
-    % ctr compute append
     append(DEQ_Ctr_SubCircuit, DEQ_Check_Circuit, DEQ_PCircuit1),
+
 
     % partial circuit append
     append(DEQ_PCircuit, DEQ_PCircuit1, DEQ_PCircuit2),
 
+
     % ctr uncompute chain
     append(Inv_DEQ_Ctr_PChain, Inv_DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_PChain1),
 
-    diag_eq(QRin, DEQ_PCircuit2, Rest, XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, PCheckRest, CheckRest, Inv_DEQ_Ctr_PChain1, DEQ_Circuit).
+
+    diag_eq(QRin, DEQ_PCircuit2, Rest, XOR_Qbits, DEQ_Ctr_SubCircuit, Inv_DEQ_Ctr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit, Overflow_Qbit, DEQ_Check_FQbit, PCheckRest, CheckRest, Inv_DEQ_Ctr_PChain1, DEQ_Circuit).
 
 
 
 %% TEST
 %
-test(QRin, PTest_Qbits, Test_Qbits, Test_Circuit) :-
-    build_circuit(QRin, n-tof, PTest_Qbits, Test_Qbits, Test_Circuit).
+test(QRin, Aux_Qbits, Check_Qbits, Test_Circuit) :-
+    append(Check_PQbits, [Check_FQbit, Test_Qbit], Check_Qbits),
+    reverse(Aux_Qbits, Test_Aux_Qbits),
+    last(Test_Aux_Qbits, Test_Aux_FQbit),
+    negate(Check_Qbits, Neg_Exp),
+    build_circuit(QRin, exp(Neg_Exp), [NOT_SubCircuit]),
+    reverse(NOT_SubCircuit, Inv_NOT_SubCircuit),
+    check_subcircuit(QRin, Check_PQbits, Test_Aux_Qbits, Test_Check_SubCircuit, Inv_Test_Check_SubCircuit),
+    build_circuit(QRin, exp([Test_Qbit: qH Test_Qbit]), [H_SubCircuit]),
+    build_circuit(QRin, exp([Test_Qbit: Test_Aux_FQbit qAND Check_FQbit]), Test_SubCircuit),
+
+    Test_SubCircuit1 = [NOT_SubCircuit | Test_Check_SubCircuit],
+    Test_SubCircuit2 = [H_SubCircuit | Test_SubCircuit],
+    append(Test_SubCircuit1, Test_SubCircuit2, Test_SubCircuit3),
+    Test_SubCircuit4 = [H_SubCircuit | Inv_Test_Check_SubCircuit],
+    append(Test_SubCircuit3, Test_SubCircuit4, Test_SubCircuit5),
+    append(Test_SubCircuit5, [Inv_NOT_SubCircuit], Test_Circuit).
 
 
 
 %% QUEENS PROBLEM
 %
 % queens problem: circuit components
-queens_problem(N, CEQ_Circuit, DDEQ_Circuit, SDEQ_Circuit, Test_Circuit) :- 
-
+queens_problem(N, CEQ_Compute_Circuit, DDEQ_Compute_Circuit, SDEQ_Compute_Circuit, Test_Circuit) :- 
+    
     % init
     init(N,
 
-        QRin, Queens, XOR_Qbits, Check_Qbits,  
-               
-        CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, CEQ_Test_Qbits,  
+        % base args
+        QRin, Queens, XOR_Qbits, Check_Qbits, Aux_Qbits,
+        
+        % column equality args
+        CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit, XOR_FQbit, CEQ_Check_FQbit,  
 
-        DEQ_Incr_SubCircuit, Inv_DEQ_Incr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit,   
-        Overflow_Qbit, DEQ_Check_FQbit, DDEQ_Test_Qbits, SDEQ_Test_Qbits,  
+        % diagonal equality args
+        DEQ_Incr_SubCircuit, DEQ_Decr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit,   
+        Overflow_Qbit, DEQ_Check_FQbit
 
-        PTest_Qbits, Test_Qbits  
         ),                                                                                                               
    
-    % column equality circuit
-    col_eq_conj(
-        QRin, [], Queens, XOR_Qbits, 
-        CEQ_NOR_SubCircuit, Inv_CEQ_NOR_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, 
-        Check_Qbits, CEQ_Test_Qbits, Check_Qbits, CEQ_Circuit1
-        ), 
-        compress(CEQ_Circuit1, CEQ_Circuit),
 
-    % diff diagonal equality circuit
-    diag_eq_conj(
+    % column equality compute circuit
+    col_eq_compute(
         QRin, [], Queens, XOR_Qbits, 
-        DEQ_Incr_SubCircuit, Inv_DEQ_Incr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit, 
-        Overflow_Qbit, DEQ_Check_FQbit, Check_Qbits, DDEQ_Test_Qbits, Check_Qbits, DDEQ_Circuit1
-        ), 
-        compress(DDEQ_Circuit1, DDEQ_Circuit),
+        CEQ_Check_SubCircuit, Inv_CEQ_Check_SubCircuit, XOR_FQbit, CEQ_Check_FQbit, 
+        Check_Qbits, Check_Qbits, CEQ_Compute_Circuit1
+        ),
+        %
+        compress(CEQ_Compute_Circuit1, CEQ_Compute_Circuit),
 
-    % sum diagonal equality circuit
-    diag_eq_conj(
+
+    % diff diagonal equality compute circuit
+    diag_eq_compute(
         QRin, [], Queens, XOR_Qbits, 
-        Inv_DEQ_Incr_SubCircuit, DEQ_Incr_SubCircuit, DEQ_NOR_SubCircuit, Inv_DEQ_NOR_SubCircuit, 
-        Overflow_Qbit, DEQ_Check_FQbit, Check_Qbits, SDEQ_Test_Qbits, Check_Qbits, SDEQ_Circuit1
+        DEQ_Incr_SubCircuit, DEQ_Decr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit, 
+        Overflow_Qbit, DEQ_Check_FQbit, Check_Qbits, Check_Qbits, DDEQ_Compute_Circuit1
         ), 
-        compress(SDEQ_Circuit1, SDEQ_Circuit),
+        %
+        compress(DDEQ_Compute_Circuit1, DDEQ_Compute_Circuit),
+   
+
+    % sum diagonal equality compute circuit
+    diag_eq_compute(
+        QRin, [], Queens, XOR_Qbits, 
+        DEQ_Decr_SubCircuit, DEQ_Incr_SubCircuit, DEQ_Check_SubCircuit, Inv_DEQ_Check_SubCircuit, 
+        Overflow_Qbit, DEQ_Check_FQbit, Check_Qbits, Check_Qbits, SDEQ_Compute_Circuit1
+        ),
+        % circuit truncation 
+        append(SDEQ_Compute_Circuit2, [_], SDEQ_Compute_Circuit1),
+        append(SDEQ_Compute_Circuit3, DEQ_Incr_SubCircuit, SDEQ_Compute_Circuit2),
+        append(SDEQ_Compute_Circuit4, [_], SDEQ_Compute_Circuit3),
+        %
+        compress(SDEQ_Compute_Circuit4, SDEQ_Compute_Circuit),
+
 
     % test circuit
     test(
         QRin, 
-        PTest_Qbits, Test_Qbits, 
+        Aux_Qbits,
+        Check_Qbits, 
         Test_Circuit1
         ),
+        %
         compress(Test_Circuit1, Test_Circuit).
+%
+%
+% queens problem: compute and test circuits
+queens_problem(N, Compute_Circuit, Test_Circuit) :-
+
+    % circuit components
+    queens_problem(N, CEQ_Compute_Circuit, DDEQ_Compute_Circuit, SDEQ_Compute_Circuit, Test_Circuit),
+
+    % compute
+    append(DDEQ_Compute_Circuit, SDEQ_Compute_Circuit, DEQ_Compute_Circuit),
+    append(CEQ_Compute_Circuit, DEQ_Compute_Circuit, Compute_Circuit).
+%
 %
 % queens problem: circuit
 queens_problem(N, Circuit) :- 
 
-    % circuit components
-    queens_problem(N, CEQ_Circuit, DDEQ_Circuit, SDEQ_Circuit, Test_Circuit),
+    % compute and test circuits
+    queens_problem(N, Compute_Circuit, Test_Circuit),
      
 
-    % compute
-    append(DDEQ_Circuit, SDEQ_Circuit, DEQ_Compute_Circuit),
-    append(CEQ_Circuit, DEQ_Compute_Circuit, Compute_Circuit),
-
     % uncompute
-    append(SDEQ_Circuit, DDEQ_Circuit, DEQ_Uncompute_Circuit),
-    append(DEQ_Uncompute_Circuit, CEQ_Circuit, Uncompute_Circuit),
+    maplist(reverse, Compute_Circuit, Uncompute_Circuit1),
+    reverse(Uncompute_Circuit1, Uncompute_Circuit),
 
 
     % circuit
@@ -418,280 +406,219 @@ queens_problem(N, Circuit) :-
 % | COLUMN EQUALITY |
 %
 % CEQ = [
-%        % CEQ COMPUTE %
+%        
 %
 %        [q(8):[[cnot(q(0),q(8))]],q(9):[[cnot(q(1),q(9))]]],           % Q0 FANOUT
 %
 %
-%        [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],           %                                                                         
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(11):[[tof(q(8),q(9),q(11))]]],                              % Q0 EQ Q1
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %                                                                     
-%        [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],           %                  
+%        [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],           % Q0 qXOR Q1        %                                                                        
+%        [q(14):[[tof(q(8),q(9),q(14))]]],                              % qAND reduction    % Q0 qEQ Q1                                                                
+%        [q(9):[[cnot(q(3),q(9))]],q(8):[[cnot(q(2),q(8))]]],           % Q0 qXOR Q1        %                 
 %
 %
-%        [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],           %         
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(12):[[tof(q(8),q(9),q(12))]]],                              % Q0 EQ Q2
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       % 
-%        [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],           %
+%        [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],           % Q0 qXOR Q2        %     
+%        [q(15):[[tof(q(8),q(9),q(15))]]],                              % qAND reduction    % Q0 qEQ Q2
+%        [q(9):[[cnot(q(5),q(9))]],q(8):[[cnot(q(4),q(8))]]],           % Q0 qXOR Q2        %
 %
 %
-%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           %
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(13):[[tof(q(8),q(9),q(13))]]],                              % Q0 EQ Q3
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           %
+%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           % Q0 qXOR Q3        %
+%        [q(16):[[tof(q(8),q(9),q(16))]]],                              % qAND reduction    % Q0 qEQ Q3
+%        [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],           % Q0 qXOR Q3        %
 %
 %
-%        [q(8):[[cnot(q(0),q(8))]],q(9):[[cnot(q(1),q(9))]]],           % Q0 FANOUT
+%        [q(9):[[cnot(q(1),q(9))]],q(9):[[cnot(q(0),q(8))]]],           % Q0 FANOUT
 %
 %      
 %        [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],           % Q1 FANOUT
 %
 %
-%        [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],           %
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(14):[[tof(q(8),q(9),q(14))]]],                              % Q1 EQ Q2
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],           %
+%        [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],           % Q1 qXOR Q2        %
+%        [q(17):[[tof(q(8),q(9),q(17))]]],                              % qAND reduction    % Q1 qEQ Q2
+%        [q(9):[[cnot(q(5),q(9))]],q(8):[[cnot(q(4),q(8))]]],           % Q1 qXOR Q2        %
 %
 %         
-%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           %
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(15):[[tof(q(8),q(9),q(15))]]],                              % Q1 EQ Q3
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           %
+%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           % Q1 qXOR Q3        %
+%        [q(18):[[tof(q(8),q(9),q(18))]]],                              % qAND reduction    % Q1 qEQ Q3
+%        [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],           % Q1 qXOR Q3        % 
 %
 %
-%        [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],           % Q1 FANOUT
-%
-%
-%        [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],           % Q2 FANOUT
-%
-%
-%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           %
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(16):[[tof(q(8),q(9),q(16))]]],                              % Q2 EQ Q3
-%        [q(8):[[not(q(8))]],q(9):[[not(q(9))]]],                       %
-%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           %
+%        [q(9):[[cnot(q(3),q(9))]],q(8):[[cnot(q(2),q(8))]]],           % Q1 FANOUT
 %
 %
 %        [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],           % Q2 FANOUT
 %
 %
-%        % CEQ TEST %
-%
-%        [q(11):[[not(q(11))]],q(12):[[not(q(12))]],q(13):[[not(q(13))]],q(14):[[not(q(14))]],q(15):[[not(q(15))]],q(16):[[not(q(16))]]],
-%        [q(21):[[tof(q(11),q(12),q(21))]]],
-%        [q(22):[[tof(q(13),q(21),q(22))]]],
-%        [q(23):[[tof(q(14),q(22),q(23))]]],
-%        [q(24):[[tof(q(15),q(23),q(24))]]],
-%        [q(17):[[tof(q(16),q(24),q(17))]]],               
-%        [q(24):[[tof(q(15),q(23),q(24))]]],
-%        [q(23):[[tof(q(14),q(22),q(23))]]],
-%        [q(22):[[tof(q(13),q(21),q(22))]]],
-%        [q(21):[[tof(q(11),q(12),q(21))]]],
-%        [q(11):[[not(q(11))]],q(12):[[not(q(12))]],q(13):[[not(q(13))]],q(14):[[not(q(14))]],q(15):[[not(q(15))]],q(16):[[not(q(16))]]],
+%        [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],           % Q2 qXOR Q3        %
+%        [q(19):[[tof(q(8),q(9),q(19))]]],                              % qAND reduction    % Q2 qEQ Q3
+%        [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],           % Q2 qXOR Q3        %
 %
 %
-%        % CEQ UNCOMPUTE %
+%        [q(9):[[cnot(q(5),q(9))]],q(8):[[cnot(q(4),q(8))]]],           % Q2 FANOUT
 %
-%        ...
-%        ...
-%        ...
+%
 %       ]
 %
 %
 % \ DIFFERENCE DIAGONAL EQUALITY \
 %
 % DDEQ = [
-%         % DDEQ COMPUTE %
-%
-%         [q(8):[[cnot(q(0),q(8))]],q(9):[[cnot(q(1),q(9))]]],          % Q0 FANOUT
-%
-%
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q0 + 1
-%         [q(8):[[not(q(8))]]],                                         %
-%
-%         [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],          %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(11):[[tof(q(10),q(21),q(11))]]],                           % (Q0 + 1) EQ Q1
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],          %
-%
-%
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q0 + 2
-%         [q(8):[[not(q(8))]]],                                         %
-%
-%         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(12):[[tof(q(10),q(21),q(12))]]],                           % (Q0 + 2) EQ Q2
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          %
-%
-%
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q0 + 3
-%         [q(8):[[not(q(8))]]],                                         %
-%
-%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(13):[[tof(q(10),q(21),q(13))]]],                           % (Q0 + 3) EQ Q3    
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %   
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          %
-%
-%
-%         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q0 + 2
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
-%
-%         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q0 + 1
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
-%
-%         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q0
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
 %
 %
 %         [q(8):[[cnot(q(0),q(8))]],q(9):[[cnot(q(1),q(9))]]],          % Q0 FANOUT
+%
+%
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
+%         [q(8):[[not(q(8))]]],                                         %
+%
+%         [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],          % (Q0 + 1) qXOR Q1  %
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(14):[[tof(q(13),q(10),q(14))]]],                           % qAND reduction    % (Q0 + 1) qEQ Q1
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(9):[[cnot(q(3),q(9))]],q(8):[[cnot(q(2),q(8))]]],          % (Q0 + 1) qXOR Q1  %
+%
+%
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
+%         [q(8):[[not(q(8))]]],                                         %
+%
+%         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          % (Q0 + 2) qXOR Q2  %
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(15):[[tof(q(13),q(10),q(15))]]],                           % qAND reduction    % (Q0 + 2) qEQ Q2
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(9):[[cnot(q(5),q(9))]],q(8):[[cnot(q(4),q(8))]]],          % (Q0 + 2) qXOR Q2  %
+%
+%
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
+%         [q(8):[[not(q(8))]]],                                         %
+%
+%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          % (Q0 + 3) qXOR Q3  %
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(16):[[tof(q(13),q(10),q(16))]]],                           % qAND reduction    % (Q0 + 3) qEQ Q3
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],          % (Q0 + 3) qXOR Q3  %
+%
+%
+%         [q(8):[[not(q(8))]]],                                         %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%
+%         [q(8):[[not(q(8))]]],                                         %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%
+%         [q(8):[[not(q(8))]]],                                         %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%
+%
+%         [q(9):[[cnot(q(1),q(9))]],q(8):[[cnot(q(0),q(8))]]],          % Q0 FANOUT
 %
 %
 %         [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],          % Q1 FANOUT
 %
 % 
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q1 + 1
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
 %         [q(8):[[not(q(8))]]],                                         %
 %    
-%         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(14):[[tof(q(10),q(21),q(14))]]],                           % (Q1 + 1) EQ Q2
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          %
+%         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          % (Q1 + 1) qXOR Q2  %
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(17):[[tof(q(13),q(10),q(17))]]],                           % qAND reduction    % (Q1 + 1) qEQ Q2
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(9):[[cnot(q(5),q(9))]],q(8):[[cnot(q(4),q(8))]]],          % (Q1 + 1) qXOR Q2  %
 %
 %
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q1 + 2
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
 %         [q(8):[[not(q(8))]]],                                         %
 %
-%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(15):[[tof(q(10),q(21),q(15))]]],                           % (Q1 + 2) EQ Q3
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          %
+%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          % (Q1 + 2) qXOR Q3  %
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(18):[[tof(q(13),q(10),q(18))]]],                           % qAND reduction    % (Q1 + 2) qEQ Q3
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],          % (Q1 + 2) qXOR Q3  %
 %
 %
 %         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q1 + 1
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
 %   
 %         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q1
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
 %
 %
-%         [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],          % Q1 FANOUT
+%         [q(9):[[cnot(q(3),q(9))]],q(8):[[cnot(q(2),q(8))]]],          % Q1 FANOUT
 %
 %
 %         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          % Q2 FANOUT
 %
 %
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q2 + 1
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
 %         [q(8):[[not(q(8))]]],                                         %
 %
-%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(16):[[tof(q(10),q(21),q(16))]]],                           % (Q2 + 1) EQ Q3
-%         [q(21):[[tof(q(8),q(9),q(21))]]],                             %
-%         [q(8):[[not(q(8))]],q(9):[[not(q(9))]],q(10):[[not(q(10))]]], %   
-%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          %
+%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          % (Q2 + 1) qXOR Q3  %
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(19):[[tof(q(13),q(10),q(19))]]],                           % qAND reduction    % (Q2 + 1) qEQ Q3
+%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+%         [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],          % (Q2 + 1) qXOR Q3  %
 %
 %
 %         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % Q2
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %
+%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
 %
-%         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          % Q2 FANOUT
-%
-%
-%         % DDEQ TEST %
-%
-%         [q(11):[[not(q(11))]],q(12):[[not(q(12))]],q(13):[[not(q(13))]],q(14):[[not(q(14))]],q(15):[[not(q(15))]],q(16):[[not(q(16))]]],
-%         [q(21):[[tof(q(11),q(12),q(21))]]],
-%         [q(22):[[tof(q(13),q(21),q(22))]]],
-%         [q(23):[[tof(q(14),q(22),q(23))]]],
-%         [q(24):[[tof(q(15),q(23),q(24))]]],
-%         [q(18):[[tof(q(16),q(24),q(18))]]],               
-%         [q(24):[[tof(q(15),q(23),q(24))]]],
-%         [q(23):[[tof(q(14),q(22),q(23))]]],
-%         [q(22):[[tof(q(13),q(21),q(22))]]],
-%         [q(21):[[tof(q(11),q(12),q(21))]]],
-%         [q(11):[[not(q(11))]],q(12):[[not(q(12))]],q(13):[[not(q(13))]],q(14):[[not(q(14))]],q(15):[[not(q(15))]],q(16):[[not(q(16))]]],
+%         [q(9):[[cnot(q(5),q(9))]],q(8):[[cnot(q(4),q(8))]]],          % Q2 FANOUT
 %
 %
-%         % DDEQ UNCOMPUTE %
-%
-%         ...
-%         ...
-%         ...
 %        ]
 %
 %
 % / SUM DIAGONAL EQUALITY /
 %
 % SDEQ = [
-%         % SDEQ COMPUTE %
+%
 %
 %         ...
-%         (Dual of the previous one, obtained interchanging incrementer/decrementer roles)
+%         Dual of the previous one, obtained interchanging incrementer/decrementer roles
 %         ...
+%         Truncation 
 %
 %
-%         % SDEQ TEST %
-%
-%         [q(11):[[not(q(11))]],q(12):[[not(q(12))]],q(13):[[not(q(13))]],q(14):[[not(q(14))]],q(15):[[not(q(15))]],q(16):[[not(q(16))]]],
-%         [q(21):[[tof(q(11),q(12),q(21))]]],
-%         [q(22):[[tof(q(13),q(21),q(22))]]],
-%         [q(23):[[tof(q(14),q(22),q(23))]]],
-%         [q(24):[[tof(q(15),q(23),q(24))]]],
-%         [q(19):[[tof(q(16),q(24),q(19))]]],               
-%         [q(24):[[tof(q(15),q(23),q(24))]]],
-%         [q(23):[[tof(q(14),q(22),q(23))]]],
-%         [q(22):[[tof(q(13),q(21),q(22))]]],
-%         [q(21):[[tof(q(11),q(12),q(21))]]],
-%         [q(11):[[not(q(11))]],q(12):[[not(q(12))]],q(13):[[not(q(13))]],q(14):[[not(q(14))]],q(15):[[not(q(15))]],q(16):[[not(q(16))]]],
-%
-%
-%         % SDEQ UNCOMPUTE %
-%
-%         ...
-%         ...
-%         ...
 %        ]   
 %
 % 
 % * TEST *
 %
 % Test = [
-%         [q(21):[[tof(q(17),q(18),q(21))]]],
-%         [q(20):[[tof(q(19),q(21),q(20))]]],
-%         [q(21):[[tof(q(17),q(18),q(21))]]]
+%
+%
+%         [q(14):[[not(q(14))]],                                                %
+%          q(15):[[not(q(15))]],                                                %
+%          q(16):[[not(q(16))]],                                                %
+%          q(17):[[not(q(17))]],                                                %
+%          q(18):[[not(q(18))]],                                                %
+%          q(19):[[not(q(19))]]],                                               %                                                               
+%         [q(12):[[tof(q(14),q(15),q(12))]]],       %                           %                                                                    
+%         [q(11):[[tof(q(16),q(12),q(11))]]],       %                           %                                                            
+%         [q(10):[[tof(q(17),q(11),q(10))]]],       %                           %                                                            
+%         [q(19):[[h(q(19))]]],                     %                           %                                                             
+%         [q(19):[[tof(q(10),q(18),q(19))]]],       % Z-axis qAND reduction     % Z-axis qNOR reduction                                                                                   
+%         [q(19):[[h(q(19))]]],                     %                           %                                                             
+%         [q(10):[[tof(q(17),q(11),q(10))]]],       %                           %                                                             
+%         [q(11):[[tof(q(16),q(12),q(11))]]],       %                           %                                                             
+%         [q(12):[[tof(q(14),q(15),q(12))]]],       %                           %                                                             
+%         [q(19):[[not(q(19))]],                                                %
+%          q(18):[[not(q(18))]],                                                %
+%          q(17):[[not(q(17))]],                                                %
+%          q(16):[[not(q(16))]],                                                %
+%          q(15):[[not(q(15))]],                                                %
+%          q(14):[[not(q(14))]]]                                                %                                                           
+%
+%
 %        ] 
 %
 %
