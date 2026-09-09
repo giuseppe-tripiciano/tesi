@@ -1,4 +1,4 @@
-:- ensure_loaded('quantumV6_3.pl').
+:- ensure_loaded('quantumV7.pl').
 
 %% CIRCUIT SIZING
 %
@@ -18,10 +18,9 @@ checksDIM(N, ChecksDIM) :-
 auxDIM(ChecksDIM, AuxDIM) :-
     AuxDIM is ChecksDIM - 3.
 %
-% dim = 
-% = state dim (N*QueenDIM) + bitwise qXOR dim (QueenDIM) + overflow dim (1) + checks dim (N*(N-1))/2) + aux dim (ChecksDIM-3) 
-dim(StateDIM, QueenDIM, ChecksDIM, AuxDIM, DIM) :-
-    DIM is StateDIM + QueenDIM + ChecksDIM + AuxDIM + 1.
+% dim
+dim(QueenDIM, StateDIM, ChecksDIM, AuxDIM, DIM) :-
+    DIM is QueenDIM + StateDIM + ChecksDIM + AuxDIM + 1.
 %
 % get dims
 get_dims(N, QueenDIM, StateDIM, ChecksDIM, AuxDIM, DIM) :-
@@ -29,7 +28,7 @@ get_dims(N, QueenDIM, StateDIM, ChecksDIM, AuxDIM, DIM) :-
     stateDIM(N, QueenDIM, StateDIM),
     checksDIM(N, ChecksDIM),
     auxDIM(ChecksDIM, AuxDIM),
-    dim(StateDIM, QueenDIM, ChecksDIM, AuxDIM, DIM).
+    dim(QueenDIM, StateDIM, ChecksDIM, AuxDIM, DIM).
 
 
 
@@ -298,10 +297,10 @@ test(QRin, Aux_Qbits, Check_Qbits, Test_Circuit) :-
 
 
 
-%% QUEENS PROBLEM
+%% N-QUEENS PROBLEM
 %
-% queens problem: circuit components
-queens_problem(N, CEQ_Compute_Circuit, DDEQ_Compute_Circuit, SDEQ_Compute_Circuit, Test_Circuit) :- 
+% n-queens problem: circuit components
+nqueens_problem(N, CEQ_Compute_Circuit, DDEQ_Compute_Circuit, SDEQ_Compute_Circuit, Test_Circuit) :- 
     
     % init
     init(N,
@@ -364,22 +363,22 @@ queens_problem(N, CEQ_Compute_Circuit, DDEQ_Compute_Circuit, SDEQ_Compute_Circui
         compress(Test_Circuit1, Test_Circuit).
 %
 %
-% queens problem: compute and test circuits
-queens_problem(N, Compute_Circuit, Test_Circuit) :-
+% n-queens problem: compute and test circuits
+nqueens_problem(N, Compute_Circuit, Test_Circuit) :-
 
     % circuit components
-    queens_problem(N, CEQ_Compute_Circuit, DDEQ_Compute_Circuit, SDEQ_Compute_Circuit, Test_Circuit),
+    nqueens_problem(N, CEQ_Compute_Circuit, DDEQ_Compute_Circuit, SDEQ_Compute_Circuit, Test_Circuit),
 
     % compute
     append(DDEQ_Compute_Circuit, SDEQ_Compute_Circuit, DEQ_Compute_Circuit),
     append(CEQ_Compute_Circuit, DEQ_Compute_Circuit, Compute_Circuit).
 %
 %
-% queens problem: circuit
-queens_problem(N, Circuit) :- 
+% n-queens problem: circuit
+nqueens_problem(N, Circuit) :- 
 
     % compute and test circuits
-    queens_problem(N, Compute_Circuit, Test_Circuit),
+    nqueens_problem(N, Compute_Circuit, Test_Circuit),
      
 
     % uncompute
@@ -464,56 +463,56 @@ queens_problem(N, Circuit) :-
 % DDEQ = [
 %
 %
-%         [q(8):[[cnot(q(0),q(8))]],q(9):[[cnot(q(1),q(9))]]],          % Q0 FANOUT
-%
-%
-%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
-%         [q(8):[[not(q(8))]]],                                         %
-%
-%         [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],          % (Q0 + 1) qXOR Q1  %
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
-%         [q(14):[[tof(q(13),q(10),q(14))]]],                           % qAND reduction    % (Q0 + 1) qEQ Q1
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
-%         [q(9):[[cnot(q(3),q(9))]],q(8):[[cnot(q(2),q(8))]]],          % (Q0 + 1) qXOR Q1  %
-%
-%
-%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
-%         [q(8):[[not(q(8))]]],                                         %
-%
-%         [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          % (Q0 + 2) qXOR Q2  %
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
-%         [q(15):[[tof(q(13),q(10),q(15))]]],                           % qAND reduction    % (Q0 + 2) qEQ Q2
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
-%         [q(9):[[cnot(q(5),q(9))]],q(8):[[cnot(q(4),q(8))]]],          % (Q0 + 2) qXOR Q2  %
-%
-%
-%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
-%         [q(8):[[not(q(8))]]],                                         %
-%
-%         [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          % (Q0 + 3) qXOR Q3  %
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
-%         [q(16):[[tof(q(13),q(10),q(16))]]],                           % qAND reduction    % (Q0 + 3) qEQ Q3
-%         [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
-%         [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],          % (Q0 + 3) qXOR Q3  %
-%
-%
-%         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
-%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
-%
-%         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
-%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
-%
-%         [q(8):[[not(q(8))]]],                                         %
-%         [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
-%         [q(13):[[tof(q(8),q(9),q(13))]]],                             %
-%
-%
-%         [q(9):[[cnot(q(1),q(9))]],q(8):[[cnot(q(0),q(8))]]],          % Q0 FANOUT
+        % [q(8):[[cnot(q(0),q(8))]],q(9):[[cnot(q(1),q(9))]]],          % Q0 FANOUT
+
+
+        % [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+        % [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
+        % [q(8):[[not(q(8))]]],                                         %
+
+        % [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],          % (Q0 + 1) qXOR Q1  %
+        % [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+        % [q(14):[[tof(q(13),q(10),q(14))]]],                           % qAND reduction    % (Q0 + 1) qEQ Q1
+        % [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+        % [q(9):[[cnot(q(3),q(9))]],q(8):[[cnot(q(2),q(8))]]],          % (Q0 + 1) qXOR Q1  %
+
+
+        % [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+        % [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
+        % [q(8):[[not(q(8))]]],                                         %
+
+        % [q(8):[[cnot(q(4),q(8))]],q(9):[[cnot(q(5),q(9))]]],          % (Q0 + 2) qXOR Q2  %
+        % [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+        % [q(15):[[tof(q(13),q(10),q(15))]]],                           % qAND reduction    % (Q0 + 2) qEQ Q2
+        % [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+        % [q(9):[[cnot(q(5),q(9))]],q(8):[[cnot(q(4),q(8))]]],          % (Q0 + 2) qXOR Q2  %
+
+
+        % [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+        % [q(9):[[cnot(q(8),q(9))]]],                                   % + 1
+        % [q(8):[[not(q(8))]]],                                         %
+
+        % [q(8):[[cnot(q(6),q(8))]],q(9):[[cnot(q(7),q(9))]]],          % (Q0 + 3) qXOR Q3  %
+        % [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+        % [q(16):[[tof(q(13),q(10),q(16))]]],                           % qAND reduction    % (Q0 + 3) qEQ Q3
+        % [q(10):[[tof(q(8),q(9),q(10))]]],                             %                   %
+        % [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],          % (Q0 + 3) qXOR Q3  %
+
+
+        % [q(8):[[not(q(8))]]],                                         %
+        % [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+        % [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+
+        % [q(8):[[not(q(8))]]],                                         %
+        % [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+        % [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+
+        % [q(8):[[not(q(8))]]],                                         %
+        % [q(9):[[cnot(q(8),q(9))]]],                                   % - 1
+        % [q(13):[[tof(q(8),q(9),q(13))]]],                             %
+
+
+        % [q(9):[[cnot(q(1),q(9))]],q(8):[[cnot(q(0),q(8))]]],          % Q0 FANOUT
 %
 %
 %         [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],          % Q1 FANOUT
@@ -596,27 +595,27 @@ queens_problem(N, Circuit) :-
 % Test = [
 %
 %
-%         [q(14):[[not(q(14))]],                                                %
-%          q(15):[[not(q(15))]],                                                %
-%          q(16):[[not(q(16))]],                                                %
-%          q(17):[[not(q(17))]],                                                %
-%          q(18):[[not(q(18))]],                                                %
-%          q(19):[[not(q(19))]]],                                               %                                                               
-%         [q(12):[[tof(q(14),q(15),q(12))]]],       %                           %                                                                    
-%         [q(11):[[tof(q(16),q(12),q(11))]]],       %                           %                                                            
-%         [q(10):[[tof(q(17),q(11),q(10))]]],       %                           %                                                            
-%         [q(19):[[h(q(19))]]],                     %                           %                                                             
-%         [q(19):[[tof(q(10),q(18),q(19))]]],       % Z-axis qAND reduction     % Z-axis qNOR reduction                                                                                   
-%         [q(19):[[h(q(19))]]],                     %                           %                                                             
-%         [q(10):[[tof(q(17),q(11),q(10))]]],       %                           %                                                             
-%         [q(11):[[tof(q(16),q(12),q(11))]]],       %                           %                                                             
-%         [q(12):[[tof(q(14),q(15),q(12))]]],       %                           %                                                             
-%         [q(19):[[not(q(19))]],                                                %
-%          q(18):[[not(q(18))]],                                                %
-%          q(17):[[not(q(17))]],                                                %
-%          q(16):[[not(q(16))]],                                                %
-%          q(15):[[not(q(15))]],                                                %
-%          q(14):[[not(q(14))]]]                                                %                                                           
+        % [q(14):[[not(q(14))]],                                                %
+        %  q(15):[[not(q(15))]],                                                %
+        %  q(16):[[not(q(16))]],                                                %
+        %  q(17):[[not(q(17))]],                                                %
+        %  q(18):[[not(q(18))]],                                                %
+        %  q(19):[[not(q(19))]]],                                               %                                                               
+        % [q(12):[[tof(q(14),q(15),q(12))]]],       %                           %                                                                    
+        % [q(11):[[tof(q(16),q(12),q(11))]]],       %                           %                                                            
+        % [q(10):[[tof(q(17),q(11),q(10))]]],       %                           %                                                            
+        % [q(19):[[h(q(19))]]],                     %                           %                                                             
+        % [q(19):[[tof(q(10),q(18),q(19))]]],       % X-basis qAND reduction    % X-basis qNOR reduction                                                                                   
+        % [q(19):[[h(q(19))]]],                     %                           %                                                             
+        % [q(10):[[tof(q(17),q(11),q(10))]]],       %                           %                                                             
+        % [q(11):[[tof(q(16),q(12),q(11))]]],       %                           %                                                             
+        % [q(12):[[tof(q(14),q(15),q(12))]]],       %                           %                                                             
+        % [q(19):[[not(q(19))]],                                                %
+        %  q(18):[[not(q(18))]],                                                %
+        %  q(17):[[not(q(17))]],                                                %
+        %  q(16):[[not(q(16))]],                                                %
+        %  q(15):[[not(q(15))]],                                                %
+        %  q(14):[[not(q(14))]]]                                                %                                                           
 %
 %
 %        ] 

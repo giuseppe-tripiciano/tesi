@@ -3,16 +3,16 @@ import re
 def get_string(qlpp_circuit, barriers=False):
 
     # qlpp pattern regex  
-    qlpp_pattern = r'(not|rnot|h|pauli_Y|pauli_Z|phase|pi_8|cnot|ch|c_pauli_Y|c_pauli_Z|swap|tof|cswap|measure)\s*\(\s*(q\(\d+\)(?:\s*,\s*q\(\d+\))*)\s*\)'
+    qlpp_pattern = r'(h|not|rnot|pauli_Y|pauli_Z|phase|pi_8|cnot|c_pauli_Y|c_pauli_Z|swap|tof|cswap|measure)\s*\(\s*(q\(\d+\)(?:\s*,\s*q\(\d+\))*)\s*\)'
     
 
     # qlpp -> qasm gates mapping
     mapping = {
 
         # 1-qbit gates
+        'h': 'h',
         'not': 'x', 
         'rnot': 'sx',
-        'h': 'h',
         'pauli_Y': 'y',
         'pauli_Z': 'z',
         'phase': 's',
@@ -20,7 +20,6 @@ def get_string(qlpp_circuit, barriers=False):
 
         # 2-qbit gates
         'cnot': 'cx', 
-        'ch': 'ch',
         'c_pauli_Y': 'cy',
         'c_pauli_Z': 'cz',
         'swap': 'swap',

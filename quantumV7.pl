@@ -4,28 +4,27 @@
 %
 % QOP definitions
 :- op(120, yfx, qAND).
-:- op(150, xfy, [qXOR, qCH, qCY, qCZ, qCS]).
-:- op(100, fy, [qH, qNOT, qRNOT, qY, qZ, qS, qT]).
+:- op(150, xfy, [qXOR, qCZ, qCY, qCS]).
+:- op(100, fy, [qH, qNOT, qRNOT, qZ, qY, qS, qT]).
 %
 % check QOP validity
-q_operator(X) :- member(X, [qAND, qXOR, qH, qCH, qNOT, qRNOT, qSWAP, qCSWAP, qY, qZ, qS, qT, qCY, qCZ, qCS]).
+q_operator(X) :- member(X, [qH, qNOT, qRNOT, qZ, qY, qS, qT, qXOR, qCZ, qCY, qCS, qSWAP, qAND, qCSWAP]).
 %
 % gate definitions
-gate(qAND,tof,3).
-gate(qXOR,cnot,2).
 gate(qH,h,1).
-gate(qCH,ch,2).
 gate(qNOT,not,1).
 gate(qRNOT,rnot,1).
-gate(qSWAP,swap,2).
-gate(qCSWAP,fredkin,3).
-gate(qY,pauli_Y,1).
 gate(qZ,pauli_Z,1).
+gate(qY,pauli_Y,1).
 gate(qS,phase,1).
 gate(qT,pi_8,1).
-gate(qCY,c_pauli_Y,2).
+gate(qXOR,cnot,2).
 gate(qCZ,c_pauli_Z,2).
+gate(qCY,c_pauli_Y,2).
 gate(qCS,c_phase,2).
+gate(qSWAP,swap,2).
+gate(qAND,tof,3).
+gate(qCSWAP,fredkin,3).
 
 
 % Number sequence generator
@@ -121,7 +120,7 @@ circuit_tree(Formula,Qbit,Circuit_tree) :-
     normalize(Formula, Norm_formula), !,
     translate([Norm_formula,Qbit,_], Circuit_tree).
 %
-% log of non-trivial formula-to-tree translations (enable with "debug(circuit_tree).", disable with "nodebug(circuit_tree).")
+% log of non-trivial formula-to-tree translations (enable with "debug(circuit_tree)", disable with "nodebug(circuit_tree)")
 circuit_tree_log(Formula,Qbit,Tree) :-
     (Qbit = q(0) -> (write('Non-trivial formula -> tree translations:'), nl, write('{')) ; true),
     (Formula \= q(_) -> format('~n Target:  ~w~n Formula: ~p~n Tree:    ~w~n', [Qbit, Formula, Tree]) ; true),
@@ -323,9 +322,9 @@ build_circuit(QRegister,exp(Exp),[FCircuit]) :-
     transform(QRfilled,Circuit),
     filter(Circuit,FCircuit).
 %
-% qOR case
-% De Morgan law -> Q1 qOR Q2 = qNOT (qNOT Q1 qAND qNOT Q2)
-build_circuit(QRegister,operator(qOR),[q(N1),q(N2),q(N3)],NCircuit) :- !,
+% or case
+% De Morgan law -> Q1 OR Q2 = qNOT (qNOT Q1 qAND qNOT Q2)
+build_circuit(QRegister,or,[q(N1),q(N2),q(N3)],NCircuit) :- !,
     % compute control negation
     build_circuit(QRegister,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),[QRout]),
 
@@ -371,7 +370,7 @@ build_circuit(QRegister,parity,CQbits,[q(A),q(T)],NCircuit) :-
     complete_circuit(QRegister,NCircuit1,exp([q(A): Inv_Parity]),NCircuit).
 %
 % n-or case 
-% De Morgan law -> Q1 qOR Q2...qOR Qn = qNOT (qNOT Q1 qAND qNOT Q2...qAND qNOT Qn)
+% De Morgan law -> Q1 OR Q2...OR Qn = qNOT (qNOT Q1 qAND qNOT Q2...qAND qNOT Qn)
 build_circuit(QRegister,n-or,CQbits,ATQbits,NCircuit) :- 
     % compute control negation
     negate(CQbits,Neg),
@@ -459,9 +458,9 @@ complete_circuit(QRegister,PCircuit,exp(Exp),NCircuit) :-
     filter(Add_Circuit,FAddCircuit),
     append(PCircuit,[FAddCircuit],NCircuit).
 %
-% qOR case
-% De Morgan law -> Q1 qOR Q2 = qNOT (qNOT Q1 qAND qNOT Q2)
-complete_circuit(QRegister,PCircuit,operator(qOR),[q(N1),q(N2),q(N3)],NCircuit) :- !,
+% or case
+% De Morgan law -> Q1 OR Q2 = qNOT (qNOT Q1 qAND qNOT Q2)
+complete_circuit(QRegister,PCircuit,or,[q(N1),q(N2),q(N3)],NCircuit) :- !,
     % compute control negation
     build_circuit(QRegister,exp([q(N1): qNOT q(N1), q(N2): qNOT q(N2)]),[QRout]),
 
@@ -525,7 +524,7 @@ complete_circuit(QRegister,CRegister,PCircuit,measurement,[Qbits,Cbits],NCircuit
     append(PCircuit,[OutCircuit],NCircuit).
 %
 % n-or case
-% De Morgan law -> Q1 qOR Q2...qOR Qn = qNOT (qNOT Q1 qAND qNOT Q2...qAND qNOT Qn)
+% De Morgan law -> Q1 OR Q2...OR Qn = qNOT (qNOT Q1 qAND qNOT Q2...qAND qNOT Qn)
 complete_circuit(QRegister,PCircuit,n-or,CQbits,ATQbits,NCircuit) :-
     % compute control negation
     negate(CQbits,Neg),
@@ -725,12 +724,12 @@ query11(QRout) :-
     qrange(4,CQbits),qrange(4,7,ATQbits), 
     build_circuit(QRin,n-tof,CQbits,ATQbits,QRout).
 
-% qOR operator query
+% or operator query
 %
 query12(QRout) :-
     reset_qbit_number,
     make_qbits(3,QRin),
-    build_circuit(QRin,operator(qOR),[q(0),q(1),q(2)],QRout).
+    build_circuit(QRin,or,[q(0),q(1),q(2)],QRout).
 
 % n-or query
 %
