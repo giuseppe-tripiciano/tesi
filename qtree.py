@@ -71,4 +71,5 @@ def draw_qtree(tree, title='Quantum Tree'):
 
     svg_dot = dot.pipe(format='svg').decode('utf-8')
 
+
     return HTML(f'<div style="width: 100%; height: 100%; display: flex; justify-content: center;">{svg_dot}</div>')
