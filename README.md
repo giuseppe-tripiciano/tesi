@@ -12,13 +12,13 @@ Il calcolo quantistico rappresenta un paradigma emergente per la risoluzione di 
 
 * Python >= 3.9 con le seguenti dipendenze:
 
-  * pip install "qiskit==2.2.3" 
-  * pip install qiskit-aer 
+  * pip install "qiskit==2.2.3"
+  * pip install qiskit-aer
   * pip install mqt.ddsim
-  * pip install pyswip pip 
+  * pip install pyswip
+  * pip install graphviz
   * pip install matplotlib
   * pip install ipython
   * pip install notebook
 
 * SWI-Prolog
-
