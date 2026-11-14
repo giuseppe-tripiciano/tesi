@@ -33,8 +33,13 @@ In: 2025 IEEE Conference on Pervasive and Intelligent Computing (PICom). \
 
 ```
 .
+├── circuits/
+│   └── nqueens_problem.qasm         # OpenQASM 3.0 circuit for the n-queens problem
 ├── docs/                                                                                           
 │   └── tesi.pdf                     # Thesis (in italian)
+├── notebooks/
+│   ├── 4queens_problem.ipynb        # Gate-level workflow for the queens problem 4x4 
+│   └── nqueens_problem.ipynb        # Logic-driven workflow for the n-queens problem
 ├── prolog/
 │   ├── quantumV6.pl                 # Baseline QLPP framework
 │   ├── quantumV7.pl                 # Extended QLPP framework 
@@ -42,13 +47,10 @@ In: 2025 IEEE Conference on Pervasive and Intelligent Computing (PICom). \
 ├── python/
 │   ├── qlpp_to_qasm.py              # QLPP to OpenQASM 3.0 translator
 │   └── qtree.py                     # Graphviz renderer of QLPP ASTs
-├── notebooks/
-│   ├── 4queens_problem.ipynb        # Gate-level workflow for the queens problem 4x4 
-│   └── nqueens_problem.ipynb        # Logic-driven workflow for the n-queens problem
-├── circuits/
-│   └── nqueens_problem.qasm         # OpenQASM 3.0 circuit for the n-queens problem
-├── requirements.txt                 # Python dependencies
-└── README.md
+├── .gitignore 
+├── LICENSE 
+├── README.md                 
+└── requirements.txt                 # Python dependencies
 ```
 
 ## Prerequisites & Installation
