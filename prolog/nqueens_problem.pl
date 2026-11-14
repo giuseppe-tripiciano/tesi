@@ -396,7 +396,7 @@ nqueens_problem(N, Circuit) :-
 % Circuit components
 % 
 %
-% QUERY: queens_problem(4,CEQ,DDEQ,SDEQ,Test)
+% QUERY: nqueens_problem(4,CEQ,DDEQ,SDEQ,Test)
 %
 %
 % ANSWER:
@@ -425,7 +425,7 @@ nqueens_problem(N, Circuit) :-
 %        [q(9):[[cnot(q(7),q(9))]],q(8):[[cnot(q(6),q(8))]]],           % Q0 qXOR Q3        %
 %
 %
-%        [q(9):[[cnot(q(1),q(9))]],q(9):[[cnot(q(0),q(8))]]],           % Q0 FANOUT
+%        [q(9):[[cnot(q(1),q(9))]],q(8):[[cnot(q(0),q(8))]]],           % Q0 FANOUT
 %
 %      
 %        [q(8):[[cnot(q(2),q(8))]],q(9):[[cnot(q(3),q(9))]]],           % Q1 FANOUT

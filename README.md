@@ -1,24 +1,84 @@
-**Modelli decisionali basati sul calcolo quantistico**
+# Decision Models based on Quantum Computing
 
-Repository per la tesi di laurea magistrale in Ingegneria Informatica presso l'Università degli Studi di Palermo
+**M.Sc. thesis in Computer Engineering at the University of Palermo (UniPa) in collaboration with CNR**
 
+**Author:** Giuseppe Tripiciano
 
-**Sommario**
+**Supervisor:** Prof. Daniele Peri (UniPa)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+**Co-supervisor:** Dr. Filippo Vella (CNR-ICAR)
 
-Il calcolo quantistico rappresenta un paradigma emergente per la risoluzione di problemi decisionali, ma la progettazione a livello delle porte circuitali costituisce una sfida sempre maggiore al crescere della complessità del problema; di conseguenza, la ricerca si è orientata verso strumenti con un maggiore livello di astrazione, in grado di derivare circuiti a partire da formulazioni logiche. Nel presente lavoro di tesi viene proposta una metodologia operativa che integra la programmazione logica al calcolo quantistico, e in particolare all'algoritmo di ricerca di Grover, per la progettazione di modelli decisionali basati su vincoli, riprendendo ed estendendo il framework QLPP (*Quantum Logic Programming in Prolog*), introdotto da Pilato et al. (2025), e verificandone l'efficacia e le potenzialità su uno scenario applicativo, il noto benchmark del problema delle n regine. La trattazione illustra dapprima i presupposti teorici di tale metodologia, per poi descrivere l'architettura di base e l'estensione del framework QLPP, comprensiva di un'interfaccia in ambiente Python/Qiskit per l'interazione con Prolog e per la traduzione del circuito allo standard OpenQASM. Infine, vengono presentati ed esaminati in dettaglio il motore logico QLPP e il flusso operativo Python/Qiskit adottati nello scenario applicativo considerato, con una discussione dei risultati ottenuti e delle prospettive future.
+## Abstract
 
+Quantum computing represents an emerging paradigm for solving decision-making problems; however, gate-level circuit design poses an ever-greater challenge as problem complexity increases. Consequently, research has shifted toward higher-level abstraction tools capable of synthesizing circuits directly from logical formulations. This thesis proposes an operational methodology that integrates logic programming with quantum computing, specifically Grover’s search algorithm, for the design of constraint-based decision models. Building upon and extending the QLPP (*Quantum Logic Programming in Prolog*) framework introduced by Pilato et al. (2025), this work evaluates its effectiveness and potential on an application scenario: the well-known n-queens benchmark problem. The thesis first outlines the theoretical foundations of this methodology, followed by the core architecture and extension of the QLPP framework, including a Python/Qiskit interface for interacting with Prolog and translating circuits into the OpenQASM standard. Finally, the QLPP logic engine and the Python/Qiskit workflow adopted in the target scenario are presented and examined in detail, concluding with a discussion of the results obtained and future directions.
 
-**Requisiti**
+## Key contributions
 
-* Python >= 3.9 con le seguenti dipendenze:
+* Proposed an operational methodology integrating logic programming with quantum computing, specifically Grover’s algorithm, to automatically synthesize decision-making circuits from high-level logical formulations.
 
-  * pip install "qiskit==2.2.3"
-  * pip install qiskit-aer
-  * pip install mqt.ddsim
-  * pip install pyswip
-  * pip install graphviz
-  * pip install matplotlib
-  * pip install ipython
-  * pip install notebook
+* Built upon the QLPP (Quantum Logic Programming in Prolog) framework by Pilato et al. (2025), extending its architecture and logic engine to handle constraint satisfaction problems (CSPs) of varying complexity.
 
-* SWI-Prolog
+* Interfaced Python/Qiskit with Prolog, extracting circuits returned by QLPP and translating them into OpenQASM 3.0 to ensure hardware-agnostic execution.
+
+* Evaluated QLPP effectiveness and scalability in oracle design for the n-queens benchmark, analyzing Grover's algorithm outcomes via statevector simulation (Qiskit Aer) and decision-diagram simulation (MQT DDSIM).
+
+*Ongoing research on further QLPP development and experimental evaluation, aimed at a scientific publication.*
+
+## Foundational paper
+
+**G.Pilato, F.Vella, T.Brugarino and S.Gaglio. «Towards Quantum Logic Programming».** \
+In: 2025 IEEE Conference on Pervasive and Intelligent Computing (PICom). \
+[DOI: 10/q9fv](https://doi.org/10/q9fv)
+
+## Repository structure
+
+```
+.
+├── docs/                                                                                           
+│   └── tesi.pdf                     # Thesis (in italian)
+├── prolog/
+│   ├── quantumV6.pl                 # Baseline QLPP framework
+│   ├── quantumV7.pl                 # Extended QLPP framework 
+│   └── nqueens_problem.pl           # N-queens problem QLPP logic engine
+├── python/
+│   ├── qlpp_to_qasm.py              # QLPP to OpenQASM 3.0 translator
+│   └── qtree.py                     # Graphviz renderer of QLPP ASTs
+├── notebooks/
+│   ├── 4queens_problem.ipynb        # Gate-level workflow for the queens problem 4x4 
+│   └── nqueens_problem.ipynb        # Logic-driven workflow for the n-queens problem
+├── circuits/
+│   └── nqueens_problem.qasm         # OpenQASM 3.0 circuit for the n-queens problem
+├── requirements.txt                 # Python dependencies
+└── README.md
+```
+
+## Prerequisites & Installation
+
+### System
+
+* **Python >= 3.12** (essential)
+* **SWI-Prolog >= 9.0** (essential)
+* **Graphviz >= 14.0** (needed for qtree.py)
+
+### Python virtual environment
+
+```bash
+# clone the repository
+git clone [https://github.com/giuseppe-tripiciano/tesi.git](https://github.com/giuseppe-tripiciano/tesi.git)
+
+# create virtual environment
+cd tesi
+python -m venv .venv
+
+# activate on Windows
+.venv\Scripts\activate
+
+# activate on Linux/macOS 
+source .venv/bin/activate
+
+# install dependencies
+pip install -r requirements.txt
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
