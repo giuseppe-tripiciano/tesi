@@ -13,13 +13,13 @@ Quantum computing represents an emerging paradigm for solving decision-making pr
 
 ## Key contributions
 
-* Proposed an operational methodology integrating logic programming with quantum computing, specifically Grover’s algorithm, to automatically synthesize decision-making circuits from high-level logical formulations.
+* Proposed an operational methodology integrating logic programming with quantum computing, specifically Grover's algorithm, to automate decision-making circuit synthesis from high-level logical formulations.
 
-* Built upon the QLPP (Quantum Logic Programming in Prolog) framework by Pilato et al. (2025), extending its architecture and logic engine to handle constraint satisfaction problems (CSPs) of varying complexity.
+* Built upon the QLPP (Quantum Logic Programming in Prolog) framework by Pilato *et al.* (2025), extending its logic engine to handle complex constraint satisfaction problems (CSPs); main additions include Toffoli chain with ancilla management, derived operators and a scalable oracle design of the n-queens benchmark.
 
-* Interfaced Python/Qiskit with Prolog, extracting circuits returned by QLPP and translating them into OpenQASM 3.0 to ensure hardware-agnostic execution.
+* Interfaced Python/Qiskit with Prolog (SWI-Prolog), extracting circuits from QLPP via PySwip and implementing a module that translates them into OpenQASM 3.0 to ensure hardware-agnostic execution.
 
-* Evaluated QLPP effectiveness and scalability in oracle design for the n-queens benchmark, analyzing Grover's algorithm outcomes via statevector simulation (Qiskit Aer) and decision-diagram simulation (MQT DDSIM).
+* Validated QLPP on small-scale instances of the n-queens benchmark, executing Grover's algorithm via statevector simulation (Qiskit Aer) and decision-diagram simulation (MQT DDSIM); results highlight a clear signal-to-noise ratio (SNR) emergence of solution states corresponding to valid board configurations.
 
 *Ongoing research on further QLPP development and experimental evaluation, aimed at a scientific publication.*
 
