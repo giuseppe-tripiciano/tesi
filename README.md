@@ -25,7 +25,7 @@ Quantum computing represents an emerging paradigm for solving decision-making pr
 
 ## Foundational paper
 
-**G.Pilato, F.Vella, T.Brugarino and S.Gaglio. «Towards Quantum Logic Programming».** \
+**G. Pilato, F. Vella, T. Brugarino and S. Gaglio. «Towards Quantum Logic Programming».** \
 In: 2025 IEEE Conference on Pervasive and Intelligent Computing (PICom). \
 [DOI: 10/q9fv](https://doi.org/10/q9fv)
 
